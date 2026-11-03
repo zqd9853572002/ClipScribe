@@ -46,9 +46,29 @@ def ensure_denoise_model(mode: str, log=None) -> str:
     return ""
 
 
+def _missing_audio_stream(detail: str) -> bool:
+    """判断 ffmpeg 报错是否为「输入里没有音轨」。
+
+    `-map 0:a:0?` 的 `?` 让音轨缺失时**不**触发 map 错误，但随后写文件头会
+    失败（WAV 一个流都没有），报错文本形如
+    ``Output file #0 does not contain any stream``。这类错误对用户毫无意义，
+    统一翻译成可读提示。
+    """
+    text = (detail or "").lower()
+    return ("does not contain any stream" in text
+            or "matches no streams" in text)
+
+
 def decode_to_wav(ffmpeg: str, src: str, dst: str, audio_filter: str = ""):
-    """用 ffmpeg 解码为 16kHz 单声道 PCM WAV，返回 (ok, 错误文本)。"""
-    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", src]
+    """用 ffmpeg 解码为 16kHz 单声道 PCM WAV，返回 (ok, 错误文本)。
+
+    `-vn` + `-map 0:a:0?` 是视频输入的关键：只取**第一条音轨**、显式丢弃
+    视频流。WAV 容器不接受视频流，不指定 `-map` 时 ffmpeg 会尝试把视频流
+    也塞进输出而直接失败。`?` 后缀表示音轨可选：没有音轨时不报 map 错，
+    改由 `_missing_audio_stream()` 转成用户可读提示。
+    """
+    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+           "-i", src, "-vn", "-map", "0:a:0?"]
     if audio_filter:
         cmd += ["-af", audio_filter]
     cmd += ["-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", dst]
@@ -56,7 +76,10 @@ def decode_to_wav(ffmpeg: str, src: str, dst: str, audio_filter: str = ""):
     if res is None:
         return False, t("err.ffmpeg_launch")
     if res.returncode != 0:
-        return False, (res.stderr or res.stdout or t("err.ffmpeg_decode"))
+        detail = res.stderr or res.stdout or ""
+        if _missing_audio_stream(detail):
+            return False, t("err.no_audio_track")
+        return False, (detail or t("err.ffmpeg_decode"))
     return True, ""
 
 
@@ -266,6 +289,9 @@ def render_denoised_audio(ffmpeg, src, out_wav, mode, should_stop, log,
 
     cmd = [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", src,
+        # 与 decode_to_wav 一致：视频输入只取第一条音轨、丢弃视频流，
+        # 否则 WAV 容器会因为「视频流无处可放」而直接报错。
+        "-vn", "-map", "0:a:0?",
         "-af", chain, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le",
         "-progress", "pipe:1", "-nostats", tmp_out,
     ]

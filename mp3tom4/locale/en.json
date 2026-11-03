@@ -7,13 +7,13 @@
   "app.window_title": "{title} v{version}",
   "app.lang_label": "Language",
 
-  "group.input": "Audio Input",
+  "group.input": "Audio / Video Input",
   "group.options_a": "Options A · Noise Reduction",
   "group.options_b": "Options B · Recognition & Subtitles",
   "group.options_c": "Options C · Video Output",
   "group.output": "Output Folder",
 
-  "btn.select_audio": "Choose Audio",
+  "btn.select_audio": "Choose Audio / Video",
   "btn.select_cover": "Choose Cover",
   "btn.select_dir": "Choose Folder",
   "btn.start": "▶ Start",
@@ -22,7 +22,7 @@
   "btn.change_ffmpeg": "Change",
   "btn.redetect": "Detect Again",
 
-  "label.audio": "Audio",
+  "label.audio": "Audio / Video",
   "label.denoise": "Noise Reduction",
   "label.model": "Model",
   "label.language": "Language",
@@ -32,7 +32,7 @@
   "label.output_dir": "Output Folder",
   "label.unselected": "None selected",
   "label.size_hint": "(non-16:9 covers are scaled with black bars)",
-  "label.audio_selected": "{count} audio file(s) selected",
+  "label.audio_selected": "{count} audio / video file(s) selected",
   "label.off": "Off",
   "label.lang_auto": "Auto-detect",
   "label.no_format": "(no format selected)",
@@ -42,6 +42,7 @@
 
   "chk.srt": "SRT",
   "chk.txt": "TXT",
+  "chk.vtt": "VTT",
   "chk.mux_original": "MP4 · Original Audio",
   "chk.mux_denoised": "MP4 · Denoised Audio",
 
@@ -56,9 +57,11 @@
   "stage.ready_hint": "Ready · {count} file(s) · {actions}",
   "stage.denoise_off_unchecked": "Noise reduction is off, so the denoised MP4 was unchecked",
   "stage.with_note": "{hint} · {note}",
-  "stage.need_audio": "Select audio files first",
+  "stage.need_audio": "Select audio or video files first",
   "stage.need_action": "Select at least one action",
   "stage.need_cover": "A cover image is required for video output",
+  "stage.video_no_mux": "Video input only provides its audio track, so cover MP4 does not apply",
+  "stage.video_need_action": "For video input, tick at least one subtitle format or noise reduction",
   "stage.file_step": "File {index}/{total} · {name} · {step} ({step_index}/{step_total})",
 
   "step.denoise": "reducing noise",
@@ -75,7 +78,8 @@
   "task.mux_original": "Original Audio MP4",
   "task.mux_denoised": "Denoised Audio MP4",
 
-  "filetype.audio": "All supported audio",
+  "filetype.audio": "All supported audio & video",
+  "filetype.video": "Video files",
   "filetype.image": "Image files",
   "filetype.all_files": "All files",
 
@@ -84,7 +88,7 @@
   "dlg.ffmpeg_invalid_msg": "This file cannot be executed. Make sure it is a valid ffmpeg.exe.",
   "dlg.ffmpeg_missing_enc_title": "Missing Encoders",
   "dlg.ffmpeg_missing_enc_msg": "This ffmpeg lacks required encoders (libx264={libx264}, aac={aac}), so it cannot produce compatible MP4 files.\nInstall the official static build: winget install --id Gyan.FFmpeg -e",
-  "dlg.pick_audio": "Select audio files (multi-select / Ctrl+A to select all)",
+  "dlg.pick_audio": "Select audio or video files (multi-select / Ctrl+A to select all)",
   "dlg.pick_cover": "Select a cover image",
   "dlg.pick_output_dir": "Select the output folder",
   "dlg.no_ffmpeg_title": "FFmpeg Missing",
@@ -108,9 +112,9 @@
   "log.ffmpeg_rejected_header": ">>> Found but unusable builds:\n",
   "log.ffmpeg_rejected_item": "    - {path} (libx264={libx264}, aac={aac})\n",
   "log.ffmpeg_manual": ">>> ✅ FFmpeg set manually: {path}\n",
-  "log.audio_imported": ">>> Imported {count} audio file(s).\n",
-  "log.output_auto": ">>> Output folder defaults to the audio folder: {dir}\n",
-  "log.output_fallback": ">>> No output folder set, falling back to the audio folder: {dir}\n",
+  "log.audio_imported": ">>> Imported {count} audio / video file(s).\n",
+  "log.output_auto": ">>> Output folder defaults to the source file's folder: {dir}\n",
+  "log.output_fallback": ">>> No output folder set, falling back to the source file's folder: {dir}\n",
   "log.cover_ready": ">>> Cover image ready: {name}\n",
   "log.output_set": ">>> Output folder set to: {dir}\n",
   "log.output_dir": ">>> 📂 Output folder: {dir}\n",
@@ -132,6 +136,7 @@
   "log.asr_empty": "  ⚠ No speech detected, no subtitles written.\n",
   "log.asr_done": "  ✅ Subtitles written: {count} segments · language {lang} ({prob:.0%}) · {elapsed:.0f}s\n     → {files}\n",
   "log.asr_failed": "  ❌ Speech recognition failed: {exc}\n",
+  "log.vtt_saved": "  ✅ VTT subtitles: {name}\n",
   "log.mux_start": "  🎬 Muxing video: {name}\n",
   "log.mux_cancelled": "  🛑 Cancelled; removing the incomplete output.\n",
   "log.mux_done": "  ✅ Done: {name} ({size:.2f} MB)\n",
@@ -162,6 +167,7 @@
 
   "err.ffmpeg_launch": "ffmpeg could not be started",
   "err.ffmpeg_decode": "ffmpeg decoding failed",
+  "err.no_audio_track": "The input has no usable audio track (the video may be silent), so no audio can be extracted",
   "err.sample_rate": "Input audio must be 16 kHz, got {rate} Hz",
 
   "model.rnnoise": "RNNoise model",

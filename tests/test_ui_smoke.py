@@ -24,14 +24,15 @@ KEY_WIDGETS = [
     "lbl_engine", "btn_engine", "btn_redetect",
     "btn_audio", "lbl_audio",
     "cmb_denoise", "cmb_model", "cmb_lang",
-    "chk_srt", "chk_txt",
+    "chk_srt", "chk_txt", "chk_vtt",
     "chk_mux_original", "chk_mux_denoised",
     "btn_img", "lbl_img", "cmb_size",
     "btn_dir", "lbl_dir",
     "btn_start", "btn_cancel", "cmb_language",
     "progress", "text_area",
     "size_var", "progress_var", "stage_var", "stt_model_var", "stt_lang_var",
-    "denoise_var", "srt_var", "txt_var", "mux_original_var", "mux_denoised_var",
+    "denoise_var", "srt_var", "txt_var", "vtt_var",
+    "mux_original_var", "mux_denoised_var",
     "lang_display_var", "groups",
 ]
 
@@ -126,6 +127,7 @@ def test_option_groups_present(app):
     assert gui.cmb_lang.master.master is gui.groups["group.options_b"]
     assert gui.chk_srt.master.master is gui.groups["group.options_b"]
     assert gui.chk_txt.master.master is gui.groups["group.options_b"]
+    assert gui.chk_vtt.master.master is gui.groups["group.options_b"]
     assert gui.chk_mux_original.master.master is gui.groups["group.options_c"]
     assert gui.chk_mux_denoised.master.master is gui.groups["group.options_c"]
     assert gui.cmb_size.master.master is gui.groups["group.options_c"]
@@ -295,10 +297,24 @@ def test_filetypes_follow_language():
 
     set_language("en", persist=False)
     try:
-        assert mw.audio_filetypes()[0][0] == "All supported audio"
+        assert mw.audio_filetypes()[0][0] == "All supported audio & video"
         assert mw.image_filetypes()[0][0] == "Image files"
     finally:
         set_language("zh_CN", persist=False)
+
+
+def test_filetypes_include_video():
+    """「全部支持」含视频扩展名，且另有独立的视频过滤器。"""
+    filters = mw.audio_filetypes()
+
+    assert any(label == t("filetype.video") for label, _pattern in filters)
+    video_pattern = next(pat for label, pat in filters if label == t("filetype.video"))
+    assert "*.mp4" in video_pattern and "*.webm" in video_pattern
+
+    everything = filters[0][1]
+    assert "*.mp4" in everything and "*.mp3" in everything
+    # 视频条目只含视频扩展名
+    assert "*.mp3" not in video_pattern
 
 
 def test_refresh_ffmpeg_keeps_saved_usable_path(monkeypatch):
@@ -398,7 +414,7 @@ def test_language_switch_updates_key_widgets(app):
 
     assert get_language() == "en"
     assert gui.btn_start.cget("text") == "▶ Start"
-    assert gui.btn_audio.cget("text") == "Choose Audio"
+    assert gui.btn_audio.cget("text") == "Choose Audio / Video"
     assert gui.btn_dir.cget("text") == "Choose Folder"
     assert gui.btn_cancel.cget("text") == "Cancel"
     assert t("group.options_a") in _group_title_texts(gui.groups["group.options_a"])
@@ -413,7 +429,7 @@ def test_language_switch_updates_key_widgets(app):
     gui.apply_language("zh_CN")
     root.update()
     assert gui.btn_start.cget("text") == "▶ 开始执行"
-    assert gui.btn_audio.cget("text") == "选择音频"
+    assert gui.btn_audio.cget("text") == "选择音频 / 视频"
     assert gui.stage_var.get() == t(
         "stage.ready_hint", count=1, actions=t("act.only_denoise"))
 
@@ -492,3 +508,81 @@ def test_language_dropdown_lists_self_names(app):
     assert gui.lang_display_var.get() == "English"
     assert gui.lang_label_var.get() == "Language"
     assert i18n.language_label("zh_TW") == "繁體中文"
+
+
+# ==================== VTT / 视频输入 ====================
+def test_vtt_checkbox_defaults_off_and_follows_model(app):
+    """VTT 复选框：默认不勾选、与 SRT/TXT 同区、随识别模型开关置灰。"""
+    _, gui = app
+
+    assert gui.vtt_var.get() is False
+    assert gui.chk_vtt.master.master is gui.groups["group.options_b"]
+    assert gui.chk_vtt.cget("text") == t("chk.vtt")
+
+    gui.set_option(gui.cmb_model, "off")
+    assert str(gui.chk_vtt.cget("state")) == "disabled"
+
+    gui.set_option(gui.cmb_model, "tiny")
+    assert str(gui.chk_vtt.cget("state")) == "normal"
+
+
+def test_vtt_only_plan_is_runnable(app):
+    """只勾 VTT → need_stt 为真，主按钮可点，计划里带 vtt=True。"""
+    _, gui = app
+    gui.audio_files = ["C:/fake/a.mp3"]
+    gui.set_option(gui.cmb_denoise, "off")
+    gui.set_option(gui.cmb_model, "tiny")
+    gui.srt_var.set(False)
+    gui.txt_var.set(False)
+    gui.vtt_var.set(True)
+    gui._sync_options()
+
+    plan = gui._build_plan()
+    assert plan.vtt is True
+    assert plan.need_stt is True
+    assert str(gui.btn_start.cget("state")) == "normal"
+
+
+def test_video_input_disables_mux_and_validates(app):
+    """视频输入：两个配图 MP4 置灰并给出原因；只勾封装时明确报错。"""
+    _, gui = app
+    gui.audio_files = ["C:/fake/clip.mp4"]
+    gui.set_option(gui.cmb_denoise, "off")
+    gui.set_option(gui.cmb_model, "tiny")
+
+    assert str(gui.chk_mux_original.cget("state")) == "disabled"
+    assert str(gui.chk_mux_denoised.cget("state")) == "disabled"
+    assert t("stage.video_no_mux") in gui.stage_var.get()
+
+    # 只勾「原始音频配图 MP4」、没有任何字幕 / 降噪目标 → 报错而不是静默通过
+    gui.srt_var.set(False)
+    gui.txt_var.set(False)
+    gui.vtt_var.set(False)
+    gui.mux_original_var.set(True)
+    gui._sync_options()
+    assert gui.stage_var.get().startswith(t("stage.video_need_action"))
+    assert str(gui.btn_start.cget("state")) == "disabled"
+
+    # 取消封装勾选 + 补勾 VTT → 可执行，并保留「配图 MP4 不适用」的说明
+    gui.mux_original_var.set(False)
+    gui.vtt_var.set(True)
+    gui._sync_options()
+    assert str(gui.btn_start.cget("state")) == "normal"
+    assert t("stage.video_no_mux") in gui.stage_var.get()
+
+    # 换回音频文件 → 选项恢复可用，视频提示消失
+    gui.audio_files = ["C:/fake/a.mp3"]
+    gui._sync_options()
+    assert str(gui.chk_mux_original.cget("state")) == "normal"
+    assert t("stage.video_no_mux") not in gui.stage_var.get()
+
+
+def test_vtt_flag_is_persisted(monkeypatch):
+    """vtt_enabled 写入配置（内部键，重启后仍生效）。"""
+    root, gui, saved = _make_app(monkeypatch)
+    try:
+        gui.vtt_var.set(True)
+        gui._persist()
+        assert saved[-1]["vtt_enabled"] is True
+    finally:
+        root.destroy()

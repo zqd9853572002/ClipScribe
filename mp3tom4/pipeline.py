@@ -26,7 +26,7 @@ from .config import (
 from .denoise import prepare_asr_audio, render_denoised_audio
 from .ffmpeg import convert_one, probe_duration, unique_path
 from .i18n import t
-from .subtitle import write_srt, write_txt
+from .subtitle import write_srt, write_txt, write_vtt
 
 # ==================== 阶段 / 步骤标识 ====================
 # 步骤名必须是**语言无关的稳定标识**：进度区间计算与分支判断都依赖它相等性，
@@ -55,6 +55,7 @@ LOG_ASR_PREPARE_FAILED = "log.asr_prepare_failed"
 LOG_ASR_EMPTY = "log.asr_empty"
 LOG_ASR_DONE = "log.asr_done"
 LOG_ASR_FAILED = "log.asr_failed"
+LOG_VTT_SAVED = "log.vtt_saved"
 LOG_MUX_START = "log.mux_start"
 LOG_MUX_CANCELLED = "log.mux_cancelled"
 LOG_MUX_DONE = "log.mux_done"
@@ -89,6 +90,7 @@ class JobPlan:
     denoise_mode: str | None
     srt: bool
     txt: bool
+    vtt: bool
     mux_original: bool
     mux_denoised: bool
     need_stt: bool
@@ -105,14 +107,16 @@ def denoise_desc(mode):
     return option_label(DENOISE_OPTIONS, mode)
 
 
-def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised):
+def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised,
+                 vtt=False):
     """把界面选项折算成「本次要做什么」的布尔组合（纯函数，不触碰工作线程）。"""
     denoise_on = denoise_code != "off"
     srt = bool(srt)
     txt = bool(txt)
+    vtt = bool(vtt)
     mux_original = bool(mux_original)
     mux_denoised = bool(mux_denoised) and denoise_on
-    need_stt = (model_code != STT_OFF) and (srt or txt)
+    need_stt = (model_code != STT_OFF) and (srt or txt or vtt)
     only_denoise = denoise_on and not need_stt and not mux_original and not mux_denoised
     return {
         "stt_on": model_code != STT_OFF,
@@ -125,7 +129,8 @@ def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised)
 
 
 def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, denoise_code,
-               lang_code, srt, txt, mux_original, mux_denoised, ffmpeg_path=""):
+               lang_code, srt, txt, mux_original, mux_denoised, ffmpeg_path="",
+               vtt=False):
     """由纯值（非 Tk 变量）构造 JobPlan，供 UI 在主线程调用。
 
     所有 “*_mode / *_code” 参数均为**内部值**；`size_mode` 额外兼容旧版中文
@@ -137,10 +142,11 @@ def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, de
 
     srt = bool(srt)
     txt = bool(txt)
+    vtt = bool(vtt)
     mux_original = bool(mux_original)
     mux_denoised = bool(mux_denoised) and denoise_mode is not None
 
-    need_stt = (model_name is not None) and (srt or txt)
+    need_stt = (model_name is not None) and (srt or txt or vtt)
     only_denoise = (denoise_mode is not None) and not need_stt \
         and not mux_original and not mux_denoised
     need_denoise = (denoise_mode is not None) and (
@@ -156,6 +162,7 @@ def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, de
         denoise_mode=denoise_mode,
         srt=srt,
         txt=txt,
+        vtt=vtt,
         mux_original=mux_original,
         mux_denoised=mux_denoised,
         need_stt=need_stt,
@@ -221,7 +228,7 @@ class Pipeline:
     # ---------- 单文件步骤 ----------
     def _do_stt(self, asr_src, stem, duration, p_start, p_end, *,
                 denoise_mode=None, already_denoised=False):
-        """语音识别并按勾选写出 SRT / TXT；失败不影响后续步骤。
+        """语音识别并按勾选写出 SRT / TXT / VTT；失败不影响后续步骤。
 
         降噪参数**显式**来自调用方（计划中的 `denoise_mode`），不再硬编码为
         "off"：若传入的是原声（`already_denoised=False`），识别前仍会按计划降噪，
@@ -266,6 +273,11 @@ class Pipeline:
                 txt_path = unique_path(os.path.join(plan.output_dir, f"{stem}.txt"))
                 write_txt(segments, txt_path)
                 produced.append(os.path.basename(txt_path))
+            if plan.vtt:
+                vtt_path = unique_path(os.path.join(plan.output_dir, f"{stem}.vtt"))
+                write_vtt(segments, vtt_path)
+                produced.append(os.path.basename(vtt_path))
+                self.log(t(LOG_VTT_SAVED, name=os.path.basename(vtt_path)))
 
             lang_name = getattr(info, "language", "?")
             try:

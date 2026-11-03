@@ -25,6 +25,32 @@ def test_constants_complete():
     assert config.IMAGE_EXTS
     assert all(ext.startswith(".") for ext in config.IMAGE_EXTS)
 
+
+def test_video_exts_and_input_exts():
+    """视频容器白名单 + 合并后的输入白名单保持一致。"""
+    assert config.VIDEO_EXTS == (".mp4", ".webm", ".mkv", ".mov", ".m4v")
+    assert all(ext.startswith(".") for ext in config.VIDEO_EXTS)
+    # 合并常量必须是「音频 + 视频」，且不能把音频从白名单里挤掉
+    assert config.INPUT_EXTS == config.AUDIO_EXTS + config.VIDEO_EXTS
+    assert set(config.AUDIO_EXTS).isdisjoint(config.VIDEO_EXTS)
+    assert ".mp3" in config.INPUT_EXTS and ".mp4" in config.INPUT_EXTS
+
+
+def test_is_video_file_detection():
+    """后缀判定：大小写不敏感、未知 / 无后缀 / 空值一律为 False。"""
+    assert config.is_video_file("clip.mp4") is True
+    assert config.is_video_file("CLIP.MP4") is True
+    assert config.is_video_file("C:/media/demo.WebM") is True
+    assert config.is_video_file("a.mkv") is True
+    assert config.is_video_file("a.mov") is True
+    assert config.is_video_file("a.m4v") is True
+
+    assert config.is_video_file("a.mp3") is False
+    assert config.is_video_file("a.wav") is False
+    assert config.is_video_file("a.srt") is False
+    assert config.is_video_file("noextension") is False
+    assert config.is_video_file("") is False
+
     assert config.DEFAULT_MODE == "1080p"
     assert config.DEFAULT_MODE in config.SIZE_TARGETS
     assert set(config.option_values(config.SIZE_OPTIONS)) == {"1080p", "720p", "orig"}
@@ -45,7 +71,7 @@ def test_version_matches_pyproject():
     tomllib = pytest.importorskip("tomllib")  # Python 3.11+ 才有标准库 tomllib
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     assert data["project"]["version"] == config.APP_VERSION
-    assert config.APP_VERSION == "5.0.0"
+    assert config.APP_VERSION == "5.1.0"
 
 
 def test_option_tables_are_value_label_pairs():

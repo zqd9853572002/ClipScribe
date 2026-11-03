@@ -20,7 +20,7 @@ from pathlib import Path
 from .i18n import t, text_for
 
 APP_NAME = "Mp3ToMp4"
-APP_VERSION = "5.0.0"
+APP_VERSION = "5.1.0"
 
 # 项目根目录（原单文件脚本所在目录）：用于探测随程序放置的 ffmpeg.exe。
 # 原代码用 `Path(__file__).resolve().parent`，模块化后本文件位于 <根>/mp3tom4/，
@@ -31,7 +31,17 @@ AUDIO_EXTS = (
     ".mp3", ".m4a", ".m4b", ".aac", ".wav", ".flac", ".ogg", ".oga",
     ".opus", ".wma", ".aiff", ".aif", ".ape", ".wv", ".amr", ".ac3", ".dts",
 )
+# 视频容器：以 mp4 / webm 为主，其余为常见容器的顺带兼容。
+# 视频只作为**输入**（取第一条音轨做识别 / 降噪），本项目不会重新封装视频画面。
+VIDEO_EXTS = (".mp4", ".webm", ".mkv", ".mov", ".m4v")
+# 用户可选的输入文件白名单（音频 + 视频）。判断「音频专用」语义时仍用 AUDIO_EXTS。
+INPUT_EXTS = AUDIO_EXTS + VIDEO_EXTS
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+
+
+def is_video_file(path) -> bool:
+    """按后缀（小写）判断是否为视频输入；未知 / 无后缀一律视为非视频。"""
+    return Path(path).suffix.lower() in VIDEO_EXTS
 
 # 注意：文件对话框的过滤器文案依赖当前界面语言，已移到 UI 层
 # （`ui.main_window.audio_filetypes()` / `image_filetypes()`），

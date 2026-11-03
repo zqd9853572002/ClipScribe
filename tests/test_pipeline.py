@@ -52,6 +52,27 @@ def test_plan_txt_only():
     assert plan.srt is False and plan.txt is True
 
 
+def test_plan_vtt_only():
+    """只勾 VTT 也必须触发识别。"""
+    plan = make_plan(vtt=True)
+    assert plan.need_stt is True
+    assert plan.vtt is True
+    assert plan.srt is False and plan.txt is False
+    assert plan.need_denoise is False
+    assert plan.only_denoise is False
+
+
+def test_plan_vtt_defaults_off():
+    """未显式传入 vtt 时（旧调用方）保持关闭，不改变既有行为。"""
+    assert make_plan(srt=True).vtt is False
+
+
+def test_plan_vtt_with_srt():
+    plan = make_plan(srt=True, vtt=True)
+    assert plan.need_stt is True
+    assert plan.srt is True and plan.vtt is True
+
+
 def test_plan_srt_and_txt():
     plan = make_plan(srt=True, txt=True)
     assert plan.need_stt is True
@@ -166,6 +187,8 @@ def test_do_stt_uses_denoise_mode_from_plan(monkeypatch):
     {"srt": True},
     {"txt": True},
     {"srt": True, "txt": True},
+    {"vtt": True},
+    {"srt": True, "vtt": True},
     {"model_code": "off", "mux_original": True},
     {"model_code": "off", "denoise_code": "arnndn", "mux_denoised": True},
     {"srt": True, "txt": True, "denoise_code": "arnndn",
@@ -182,6 +205,7 @@ def test_option_flags_matches_plan(overrides):
         overrides.get("txt", False),
         overrides.get("mux_original", False),
         overrides.get("mux_denoised", False),
+        overrides.get("vtt", False),
     )
     assert flags["need_stt"] == plan.need_stt
     assert flags["denoise_on"] == (plan.denoise_mode is not None)
@@ -389,3 +413,72 @@ def test_flow_5_only_denoise(ffmpeg_path, sine_audio, denoise_model, tmp_path):
 
     stem = Path(sine_audio).stem
     assert sorted(path.name for path in out_dir.iterdir()) == [f"{stem}_denoised.wav"]
+
+
+@pytest.mark.integration
+def test_flow_6_vtt_only(monkeypatch, ffmpeg_path, sine_audio, tmp_path):
+    """链路 6：只勾 VTT → 只产出 .vtt（无 SRT / TXT / MP4）。"""
+    monkeypatch.setattr(pipeline_mod, "transcribe_audio", _fake_transcribe)
+    out_dir = _out_dir(tmp_path)
+    plan = build_plan(
+        audio_files=[sine_audio], output_dir=str(out_dir), image_path="",
+        size_mode="720p", model_code="tiny", denoise_code="off",
+        lang_code="auto", srt=False, txt=False, vtt=True,
+        mux_original=False, mux_denoised=False, ffmpeg_path=ffmpeg_path)
+    assert plan.need_stt is True
+
+    rec = run_pipeline(plan)
+
+    stem = Path(sine_audio).stem
+    vtt_path = out_dir / f"{stem}.vtt"
+    assert vtt_path.is_file()
+    content = vtt_path.read_text(encoding="utf-8")
+    assert content.startswith("WEBVTT\n")
+    assert "00:00:00.000 --> 00:00:01.000" in content
+    assert not list(out_dir.glob("*.srt"))
+    assert not list(out_dir.glob("*.txt"))
+    assert not list(out_dir.glob("*.mp4"))
+    # 落盘后有独立日志行（log.vtt_saved）
+    assert any(".vtt" in text and "VTT" in text for text, _err in rec.logs)
+    assert rec.done == 1
+
+
+@pytest.mark.integration
+def test_flow_7_vtt_and_srt(monkeypatch, ffmpeg_path, sine_audio, tmp_path):
+    """链路 7：VTT + SRT 同时勾选 → 两个文件都在，内容各自合法。"""
+    monkeypatch.setattr(pipeline_mod, "transcribe_audio", _fake_transcribe)
+    out_dir = _out_dir(tmp_path)
+    plan = build_plan(
+        audio_files=[sine_audio], output_dir=str(out_dir), image_path="",
+        size_mode="720p", model_code="tiny", denoise_code="off",
+        lang_code="auto", srt=True, txt=False, vtt=True,
+        mux_original=False, mux_denoised=False, ffmpeg_path=ffmpeg_path)
+
+    run_pipeline(plan)
+
+    stem = Path(sine_audio).stem
+    srt_path = out_dir / f"{stem}.srt"
+    vtt_path = out_dir / f"{stem}.vtt"
+    assert srt_path.is_file() and vtt_path.is_file()
+    assert srt_path.read_text(encoding="utf-8").startswith("1\n00:00:00,000 --> ")
+    assert vtt_path.read_text(encoding="utf-8").startswith("WEBVTT\n")
+    assert not list(out_dir.glob("*.mp4"))
+
+
+@pytest.mark.integration
+def test_flow_8_video_input_to_vtt(monkeypatch, ffmpeg_path, sine_video, tmp_path):
+    """链路 8：mp4 输入 → 只提取音轨做识别 → 写出 .vtt，且不产生视频。"""
+    monkeypatch.setattr(pipeline_mod, "transcribe_audio", _fake_transcribe)
+    out_dir = _out_dir(tmp_path)
+    plan = build_plan(
+        audio_files=[sine_video], output_dir=str(out_dir), image_path="",
+        size_mode="720p", model_code="tiny", denoise_code="off",
+        lang_code="auto", srt=False, txt=False, vtt=True,
+        mux_original=False, mux_denoised=False, ffmpeg_path=ffmpeg_path)
+
+    run_pipeline(plan)
+
+    stem = Path(sine_video).stem
+    assert (out_dir / f"{stem}.vtt").is_file()
+    assert not list(out_dir.glob("*.mp4"))
+    assert not [name for name in out_dir.iterdir() if name.name != f"{stem}.vtt"]

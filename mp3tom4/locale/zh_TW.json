@@ -7,13 +7,13 @@
   "app.window_title": "{title} v{version}",
   "app.lang_label": "介面語言",
 
-  "group.input": "輸入音訊",
+  "group.input": "輸入音訊 / 影片",
   "group.options_a": "選項 A · 降噪",
   "group.options_b": "選項 B · 辨識與字幕",
   "group.options_c": "選項 C · 影片產生",
   "group.output": "輸出資料夾",
 
-  "btn.select_audio": "選擇音訊",
+  "btn.select_audio": "選擇音訊 / 影片",
   "btn.select_cover": "選擇封面",
   "btn.select_dir": "選擇輸出資料夾",
   "btn.start": "▶ 開始執行",
@@ -22,7 +22,7 @@
   "btn.change_ffmpeg": "更換",
   "btn.redetect": "重新偵測",
 
-  "label.audio": "音訊",
+  "label.audio": "音訊 / 影片",
   "label.denoise": "降噪",
   "label.model": "辨識模型",
   "label.language": "辨識語系",
@@ -32,7 +32,7 @@
   "label.output_dir": "輸出資料夾",
   "label.unselected": "未選擇",
   "label.size_hint": "（非 16:9 封面會等比縮放並補黑邊）",
-  "label.audio_selected": "已選取 {count} 個音訊",
+  "label.audio_selected": "已選取 {count} 個音訊 / 影片",
   "label.off": "關閉",
   "label.lang_auto": "自動偵測",
   "label.no_format": "（未勾選格式）",
@@ -42,6 +42,7 @@
 
   "chk.srt": "SRT",
   "chk.txt": "TXT",
+  "chk.vtt": "VTT",
   "chk.mux_original": "原始音訊配圖 MP4",
   "chk.mux_denoised": "降噪音訊配圖 MP4",
 
@@ -56,9 +57,11 @@
   "stage.ready_hint": "就緒 · {count} 個音訊 · {actions}",
   "stage.denoise_off_unchecked": "降噪已關閉，降噪版 MP4 已自動取消",
   "stage.with_note": "{hint} · {note}",
-  "stage.need_audio": "請選擇音訊檔案",
+  "stage.need_audio": "請選擇音訊或影片檔案",
   "stage.need_action": "請至少選擇一種處理方式",
   "stage.need_cover": "已選影片輸出，還需選擇封面圖片",
+  "stage.video_no_mux": "影片輸入只擷取音軌，配圖 MP4 不適用",
+  "stage.video_need_action": "影片輸入請至少勾選一種字幕格式或降噪",
   "stage.file_step": "第 {index}/{total} 個 · {name} · 正在{step}（{step_index}/{step_total}）",
 
   "step.denoise": "降噪",
@@ -75,7 +78,8 @@
   "task.mux_original": "原聲配圖 MP4",
   "task.mux_denoised": "降噪配圖 MP4",
 
-  "filetype.audio": "所有支援的音訊",
+  "filetype.audio": "所有支援的音訊 / 影片",
+  "filetype.video": "影片檔案",
   "filetype.image": "圖片檔案",
   "filetype.all_files": "所有檔案",
 
@@ -84,7 +88,7 @@
   "dlg.ffmpeg_invalid_msg": "無法執行此檔案，請確認它是有效的 ffmpeg.exe。",
   "dlg.ffmpeg_missing_enc_title": "缺少編碼器",
   "dlg.ffmpeg_missing_enc_msg": "此 ffmpeg 缺少必要編碼器（libx264={libx264}, aac={aac}），無法產生相容的 MP4。\n建議安裝官方靜態版：winget install --id Gyan.FFmpeg -e",
-  "dlg.pick_audio": "請選擇音訊檔案（可多選 / Ctrl+A 全選）",
+  "dlg.pick_audio": "請選擇音訊或影片檔案（可多選 / Ctrl+A 全選）",
   "dlg.pick_cover": "請選擇一張封面圖片",
   "dlg.pick_output_dir": "請選擇輸出資料夾",
   "dlg.no_ffmpeg_title": "缺少 FFmpeg",
@@ -108,9 +112,9 @@
   "log.ffmpeg_rejected_header": ">>> 偵測到但無法使用的版本:\n",
   "log.ffmpeg_rejected_item": "    - {path} (libx264={libx264}, aac={aac})\n",
   "log.ffmpeg_manual": ">>> ✅ 已手動指定 FFmpeg: {path}\n",
-  "log.audio_imported": ">>> 已匯入 {count} 個音訊檔案。\n",
-  "log.output_auto": ">>> 已自動設定輸出資料夾為音訊所在資料夾: {dir}\n",
-  "log.output_fallback": ">>> 未指定輸出資料夾，已回退到音訊所在資料夾：{dir}\n",
+  "log.audio_imported": ">>> 已匯入 {count} 個音訊 / 影片檔案。\n",
+  "log.output_auto": ">>> 已自動設定輸出資料夾為檔案所在資料夾: {dir}\n",
+  "log.output_fallback": ">>> 未指定輸出資料夾，已回退到檔案所在資料夾：{dir}\n",
   "log.cover_ready": ">>> 封面圖片已就緒: {name}\n",
   "log.output_set": ">>> 輸出資料夾已設定為: {dir}\n",
   "log.output_dir": ">>> 📂 輸出資料夾：{dir}\n",
@@ -132,6 +136,7 @@
   "log.asr_empty": "  ⚠ 未辨識到有效語音，未產生字幕。\n",
   "log.asr_done": "  ✅ 字幕已產生：{count} 段 · 語系 {lang} ({prob:.0%}) · 耗時 {elapsed:.0f}s\n     → {files}\n",
   "log.asr_failed": "  ❌ 語音辨識失敗：{exc}\n",
+  "log.vtt_saved": "  ✅ VTT 字幕：{name}\n",
   "log.mux_start": "  🎬 封裝影片：{name}\n",
   "log.mux_cancelled": "  🛑 已取消，刪除未完成的輸出檔案。\n",
   "log.mux_done": "  ✅ 成功：{name}（{size:.2f} MB）\n",
@@ -162,6 +167,7 @@
 
   "err.ffmpeg_launch": "ffmpeg 無法啟動",
   "err.ffmpeg_decode": "ffmpeg 解碼失敗",
+  "err.no_audio_track": "輸入檔案裡沒有可用的音軌（影片可能無聲），無法擷取音訊",
   "err.sample_rate": "輸入音訊取樣率必須為 16kHz，目前為 {rate}Hz",
 
   "model.rnnoise": "RNNoise 模型",

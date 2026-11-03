@@ -136,6 +136,92 @@ def test_write_srt_duplicate_name_uses_unique_path(tmp_path):
     assert (tmp_path / "a (1).srt").is_file()
 
 
+# ---------- VTT ----------
+def test_write_vtt_header_and_content(tmp_path):
+    """首行 WEBVTT + 空行；时间码用点号；不写序号。"""
+    segments = [
+        {"start": 0.0, "end": 1.0, "text": "你好世界"},
+        {"start": 2.0, "end": 2.5, "text": "hello"},
+    ]
+    path = tmp_path / "a.vtt"
+    st.write_vtt(segments, str(path))
+
+    assert path.read_text(encoding="utf-8") == (
+        "WEBVTT\n"
+        "\n"
+        "00:00:00.000 --> 00:00:01.000\n"
+        "你好世界\n"
+        "\n"
+        "00:00:02.000 --> 00:00:02.500\n"
+        "hello\n"
+        "\n"
+    )
+
+
+def test_write_vtt_uses_dot_milliseconds(tmp_path):
+    path = tmp_path / "b.vtt"
+    st.write_vtt([{"start": 1.5, "end": 2.75, "text": "x"}], str(path))
+    content = path.read_text(encoding="utf-8")
+
+    assert "00:00:01.500 --> 00:00:02.750" in content
+    # VTT 不允许 SRT 的逗号写法
+    assert "00:00:01,500" not in content
+
+
+def test_write_vtt_has_no_cue_numbers(tmp_path):
+    path = tmp_path / "c.vtt"
+    st.write_vtt([{"start": 0.0, "end": 1.0, "text": "one"},
+                  {"start": 1.0, "end": 2.0, "text": "two"}], str(path))
+    lines = path.read_text(encoding="utf-8").splitlines()
+
+    assert not [line for line in lines if line.strip().isdigit()]
+
+
+def test_write_vtt_skips_blank_text(tmp_path):
+    path = tmp_path / "d.vtt"
+    st.write_vtt([{"start": 0.0, "end": 1.0, "text": ""},
+                  {"start": 1.0, "end": 2.0, "text": "   "},
+                  {"start": 2.0, "end": 3.0, "text": "keep"}], str(path))
+    content = path.read_text(encoding="utf-8")
+
+    assert content.count("-->") == 1
+    assert "keep" in content
+
+
+def test_write_vtt_min_end_guard(tmp_path):
+    """end 至少为 start + 0.2 秒，与 SRT 一致。"""
+    path = tmp_path / "e.vtt"
+    st.write_vtt([{"start": 1.0, "end": 1.01, "text": "x"}], str(path))
+    assert "00:00:01.000 --> 00:00:01.200" in path.read_text(encoding="utf-8")
+
+
+def test_write_vtt_wraps_like_srt(tmp_path):
+    """折行规则与 SRT 完全相同（42 宽 / 最多 3 行 / CJK 记 2 宽）。"""
+    text = "中" * 60
+    path = tmp_path / "f.vtt"
+    st.write_vtt([{"start": 0.0, "end": 5.0, "text": text}], str(path))
+    lines = path.read_text(encoding="utf-8").splitlines()
+
+    body = [line for line in lines if line and "-->" not in line and line != "WEBVTT"]
+    assert body == st.wrap_subtitle(text)
+    assert all(st.display_width(line) <= 42 for line in body)
+
+
+def test_write_vtt_empty_segments(tmp_path):
+    path = tmp_path / "g.vtt"
+    st.write_vtt([], str(path))
+    assert path.read_text(encoding="utf-8") == "WEBVTT\n\n"
+
+
+def test_write_vtt_is_utf8_without_bom(tmp_path):
+    path = tmp_path / "h.vtt"
+    st.write_vtt([{"start": 0.0, "end": 1.0, "text": "中文"}], str(path))
+    raw = path.read_bytes()
+
+    assert not raw.startswith(b"\xef\xbb\xbf")
+    assert "中文" in raw.decode("utf-8")
+
+
 # ---------- TXT ----------
 def test_write_txt_english_joined_with_space(tmp_path):
     path = tmp_path / "a.txt"

@@ -7,13 +7,13 @@
   "app.window_title": "{title} v{version}",
   "app.lang_label": "界面语言",
 
-  "group.input": "输入音频",
+  "group.input": "输入音频 / 视频",
   "group.options_a": "选项 A · 降噪",
   "group.options_b": "选项 B · 识别与字幕",
   "group.options_c": "选项 C · 视频生成",
   "group.output": "输出目录",
 
-  "btn.select_audio": "选择音频",
+  "btn.select_audio": "选择音频 / 视频",
   "btn.select_cover": "选择封面",
   "btn.select_dir": "选择输出目录",
   "btn.start": "▶ 开始执行",
@@ -22,7 +22,7 @@
   "btn.change_ffmpeg": "更换",
   "btn.redetect": "重新检测",
 
-  "label.audio": "音频",
+  "label.audio": "音频 / 视频",
   "label.denoise": "降噪",
   "label.model": "识别模型",
   "label.language": "识别语种",
@@ -32,7 +32,7 @@
   "label.output_dir": "输出目录",
   "label.unselected": "未选择",
   "label.size_hint": "（非 16:9 封面会等比缩放并补黑边）",
-  "label.audio_selected": "已选中 {count} 个音频",
+  "label.audio_selected": "已选中 {count} 个音频 / 视频",
   "label.off": "关闭",
   "label.lang_auto": "自动检测",
   "label.no_format": "（未勾选格式）",
@@ -42,6 +42,7 @@
 
   "chk.srt": "SRT",
   "chk.txt": "TXT",
+  "chk.vtt": "VTT",
   "chk.mux_original": "原始音频配图 MP4",
   "chk.mux_denoised": "降噪音频配图 MP4",
 
@@ -56,9 +57,11 @@
   "stage.ready_hint": "就绪 · {count} 个音频 · {actions}",
   "stage.denoise_off_unchecked": "降噪已关闭，降噪版 MP4 已自动取消",
   "stage.with_note": "{hint} · {note}",
-  "stage.need_audio": "请选择音频文件",
+  "stage.need_audio": "请选择音频或视频文件",
   "stage.need_action": "请至少选择一种处理方式",
   "stage.need_cover": "已选视频输出，还需选择封面图片",
+  "stage.video_no_mux": "视频输入只提取音轨，配图 MP4 不适用",
+  "stage.video_need_action": "视频输入请至少勾选一种字幕格式或降噪",
   "stage.file_step": "第 {index}/{total} 个 · {name} · 正在{step}（{step_index}/{step_total}）",
 
   "step.denoise": "降噪",
@@ -75,7 +78,8 @@
   "task.mux_original": "原声配图 MP4",
   "task.mux_denoised": "降噪配图 MP4",
 
-  "filetype.audio": "全部支持的音频",
+  "filetype.audio": "全部支持的音频 / 视频",
+  "filetype.video": "视频文件",
   "filetype.image": "图片文件",
   "filetype.all_files": "全部文件",
 
@@ -84,7 +88,7 @@
   "dlg.ffmpeg_invalid_msg": "无法执行该文件，请确认它是有效的 ffmpeg.exe。",
   "dlg.ffmpeg_missing_enc_title": "缺少编码器",
   "dlg.ffmpeg_missing_enc_msg": "该 ffmpeg 缺少必要编码器（libx264={libx264}, aac={aac}），无法生成兼容 MP4。\n建议安装官方静态版：winget install --id Gyan.FFmpeg -e",
-  "dlg.pick_audio": "请选择音频文件（可多选 / Ctrl+A 全选）",
+  "dlg.pick_audio": "请选择音频或视频文件（可多选 / Ctrl+A 全选）",
   "dlg.pick_cover": "请选择一张封面图片",
   "dlg.pick_output_dir": "请选择输出目录",
   "dlg.no_ffmpeg_title": "缺少 FFmpeg",
@@ -108,9 +112,9 @@
   "log.ffmpeg_rejected_header": ">>> 检测到但不可用的版本:\n",
   "log.ffmpeg_rejected_item": "    - {path} (libx264={libx264}, aac={aac})\n",
   "log.ffmpeg_manual": ">>> ✅ 已手动指定 FFmpeg: {path}\n",
-  "log.audio_imported": ">>> 已导入 {count} 个音频文件。\n",
-  "log.output_auto": ">>> 已自动设定输出目录为音频所在目录: {dir}\n",
-  "log.output_fallback": ">>> 未指定输出目录，已回退到音频所在目录：{dir}\n",
+  "log.audio_imported": ">>> 已导入 {count} 个音频 / 视频文件。\n",
+  "log.output_auto": ">>> 已自动设定输出目录为文件所在目录: {dir}\n",
+  "log.output_fallback": ">>> 未指定输出目录，已回退到文件所在目录：{dir}\n",
   "log.cover_ready": ">>> 封面图片已就绪: {name}\n",
   "log.output_set": ">>> 输出目录已设定为: {dir}\n",
   "log.output_dir": ">>> 📂 输出目录：{dir}\n",
@@ -132,6 +136,7 @@
   "log.asr_empty": "  ⚠ 未识别到有效语音，未生成字幕。\n",
   "log.asr_done": "  ✅ 字幕已生成：{count} 条 · 语种 {lang} ({prob:.0%}) · 耗时 {elapsed:.0f}s\n     → {files}\n",
   "log.asr_failed": "  ❌ 语音识别失败：{exc}\n",
+  "log.vtt_saved": "  ✅ VTT 字幕：{name}\n",
   "log.mux_start": "  🎬 封装视频：{name}\n",
   "log.mux_cancelled": "  🛑 已取消，删除未完成的输出文件。\n",
   "log.mux_done": "  ✅ 成功：{name}（{size:.2f} MB）\n",
@@ -162,6 +167,7 @@
 
   "err.ffmpeg_launch": "ffmpeg 无法启动",
   "err.ffmpeg_decode": "ffmpeg 解码失败",
+  "err.no_audio_track": "输入文件里没有可用的音轨（视频可能无声），无法提取音频",
   "err.sample_rate": "输入音频采样率必须为 16kHz，当前为 {rate}Hz",
 
   "model.rnnoise": "RNNoise 模型",

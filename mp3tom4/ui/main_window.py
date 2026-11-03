@@ -22,9 +22,12 @@ from ..config import (
     DEFAULT_STT_MODEL,
     DENOISE_OPTIONS,
     IMAGE_EXTS,
+    INPUT_EXTS,
     SIZE_OPTIONS,
     STT_LANG_OPTIONS,
     STT_MODEL_OPTIONS,
+    VIDEO_EXTS,
+    is_video_file,
     legacy_subtitle_flags,
     load_config,
     module_available,
@@ -50,9 +53,14 @@ LOG_TASK_HEADER = "=" * 64 + "\n"
 
 
 def audio_filetypes():
-    """音频对话框过滤器（文案随当前语言生成，故从 config 移到 UI 层）。"""
+    """输入文件对话框过滤器：音频 / 视频 / 全部文件。
+
+    「全部支持」一条使用 `INPUT_EXTS`（音频 + 视频），单独的「视频」一条方便
+    用户只看视频；文案随当前语言生成，故从 config 移到 UI 层。
+    """
     return [
-        (t("filetype.audio"), " ".join("*" + ext for ext in AUDIO_EXTS)),
+        (t("filetype.audio"), " ".join("*" + ext for ext in INPUT_EXTS)),
+        (t("filetype.video"), " ".join("*" + ext for ext in VIDEO_EXTS)),
         (t("filetype.all_files"), "*.*"),
     ]
 
@@ -93,7 +101,8 @@ class AudioToVideoApp:
         # 当前阶段以「词条 key + 参数」保存，切换语言时可重新生成
         self._stage_key = None
         self._stage_kwargs = {}
-        self._stage_note_key = None
+        # 阶段附注可以有多条（如「降噪关闭自动取消」+「视频输入不支持配图 MP4」）
+        self._stage_note_keys = []
         # FFmpeg 状态条状态：detecting / ok / missing
         self._engine_state = "detecting"
 
@@ -135,6 +144,8 @@ class AudioToVideoApp:
             "label.denoise"))
         self.srt_var = tk.BooleanVar(value=srt_default)
         self.txt_var = tk.BooleanVar(value=txt_default)
+        # 新增格式默认不勾选：老用户升级后行为不变
+        self.vtt_var = tk.BooleanVar(value=bool(self.cfg.get("vtt_enabled", False)))
         self.mux_original_var = tk.BooleanVar(value=bool(self.cfg.get("mux_original", False)))
         self.mux_denoised_var = tk.BooleanVar(value=bool(self.cfg.get("mux_denoised", False)))
 
@@ -174,7 +185,8 @@ class AudioToVideoApp:
             kwargs = dict(self._stage_kwargs)
             if self._stage_key == "stage.ready_hint":
                 kwargs["actions"] = self._actions_text()
-            self._set_stage(self._stage_key, note_key=self._stage_note_key, **kwargs)
+            self._set_stage(self._stage_key, notes=list(self._stage_note_keys),
+                            **kwargs)
 
     def apply_language(self, code):
         """切换语言 → 落盘 → 立即重译（供下拉框与测试共用）。"""
@@ -244,6 +256,7 @@ class AudioToVideoApp:
                 DENOISE_OPTIONS, self.denoise_var.get(), DEFAULT_DENOISE)[0],
             "srt_enabled": bool(self.srt_var.get()),
             "txt_enabled": bool(self.txt_var.get()),
+            "vtt_enabled": bool(self.vtt_var.get()),
             "mux_original": bool(self.mux_original_var.get()),
             "mux_denoised": bool(self.mux_denoised_var.get()),
         })
@@ -268,6 +281,7 @@ class AudioToVideoApp:
             self.txt_var.get(),
             self.mux_original_var.get(),
             self.mux_denoised_var.get(),
+            self.vtt_var.get(),
         )
 
     def _validate_plan(self):
@@ -275,12 +289,21 @@ class AudioToVideoApp:
         flags = self._option_flags()
         if not self.audio_files:
             return False, "stage.need_audio"
+        # 视频输入只提取音轨：若仍勾着「配图 MP4」却没有任何字幕 / 降噪目标，
+        # 说明用户想要的其实是对视频重新封装 —— 本项目不支持，必须明确报错。
+        if self._has_video_input() and (flags["mux_original"] or flags["mux_denoised"]) \
+                and not (flags["need_stt"] or flags["denoise_on"]):
+            return False, "stage.video_need_action"
         if not (flags["need_stt"] or flags["mux_original"]
                 or flags["mux_denoised"] or flags["only_denoise"]):
             return False, "stage.need_action"
         if (flags["mux_original"] or flags["mux_denoised"]) and not self.image_path:
             return False, "stage.need_cover"
         return True, None
+
+    def _has_video_input(self) -> bool:
+        """当前选中的文件里是否含视频（任一即视为视频输入）。"""
+        return any(is_video_file(path) for path in self.audio_files)
 
     def _actions_text(self):
         """当前计划的动作名（按当前语言拼接）。"""
@@ -296,14 +319,21 @@ class AudioToVideoApp:
             keys.append("act.mux_denoised")
         return " + ".join(t(key) for key in keys)
 
-    def _set_stage(self, key, note_key=None, **kwargs):
-        """记录阶段 key + 参数并渲染；语言切换时可原样重建。"""
+    def _set_stage(self, key, note_key=None, notes=None, **kwargs):
+        """记录阶段 key + 参数并渲染；语言切换时可原样重建。
+
+        `notes` 支持同时附加多条说明（例如「降噪关闭自动取消」+
+        「视频输入不支持配图 MP4」），渲染时统一用「 · 」连接。
+        """
         self._stage_key = key
         self._stage_kwargs = dict(kwargs)
-        self._stage_note_key = note_key
+        merged = [note_key] if note_key else []
+        merged.extend(notes or [])
+        self._stage_note_keys = merged
         text = t(key, **kwargs)
-        if note_key:
-            text = t("stage.with_note", hint=text, note=t(note_key))
+        if merged:
+            text = t("stage.with_note", hint=text,
+                     note=" · ".join(t(item) for item in merged))
         self.stage_var.set(text)
 
     def _sync_options(self, *_args):
@@ -319,10 +349,12 @@ class AudioToVideoApp:
             self.cmb_lang.config(state="readonly")
             self.chk_srt.config(state=tk.NORMAL)
             self.chk_txt.config(state=tk.NORMAL)
+            self.chk_vtt.config(state=tk.NORMAL)
         else:
             self.cmb_lang.config(state=tk.DISABLED)
             self.chk_srt.config(state=tk.DISABLED)
             self.chk_txt.config(state=tk.DISABLED)
+            self.chk_vtt.config(state=tk.DISABLED)
 
         # 降噪 = 关闭 → 降噪 MP4 置灰，并**自动取消勾选**（否则会被静默跳过）。
         # 反向不自动恢复勾选：重新开启降噪后由用户重新决定。
@@ -337,6 +369,16 @@ class AudioToVideoApp:
                 self.cfg["mux_denoised"] = False
                 save_config(self.cfg)
 
+        # 视频输入只提取音轨做识别 / 降噪，「音轨 + 封面图」重新封装不适用，
+        # 因此两个配图 MP4 选项一律置灰（勾选状态保留，由校验给出明确提示）。
+        has_video = self._has_video_input()
+        if has_video:
+            self.chk_mux_original.config(state=tk.DISABLED)
+            self.chk_mux_denoised.config(state=tk.DISABLED)
+        else:
+            # 切回纯音频输入时恢复（降噪 MP4 的可用性仍由上面的降噪开关决定）
+            self.chk_mux_original.config(state=tk.NORMAL)
+
         # 封面按钮：没有视频输出时灰色但仍可点击，方便提前准备素材
         if flags["mux_original"] or flags["mux_denoised"]:
             self.btn_img.config(bg="#D97706", fg="white", activebackground="#B45309",
@@ -345,19 +387,23 @@ class AudioToVideoApp:
             self.btn_img.config(bg="#4A4A4A", fg="#9A9A9A", activebackground="#4A4A4A",
                                 activeforeground="#9A9A9A", cursor="hand2")
 
-        # 自动取消的说明要附在提示后面（即使当前计划因「无任何处理方式」不可执行），
-        # 与拆分前行为保持一致。
-        note_key = "stage.denoise_off_unchecked" if auto_unchecked else None
+        # 自动取消 / 视频输入的说明要附在提示后面（即使当前计划因「无任何处理
+        # 方式」不可执行），与拆分前行为保持一致。
+        notes = []
+        if auto_unchecked:
+            notes.append("stage.denoise_off_unchecked")
+        if has_video:
+            notes.append("stage.video_no_mux")
         ok, key = self._validate_plan()
         if ok:
             self._set_stage(
                 "stage.ready_hint",
-                note_key=note_key,
+                notes=notes,
                 count=len(self.audio_files),
                 actions=self._actions_text(),
             )
         else:
-            self._set_stage(key, note_key=note_key)
+            self._set_stage(key, notes=notes)
         self.btn_start.config(state=tk.NORMAL if ok else tk.DISABLED)
 
     def _show_selection(self, var, label, path, as_basename=False):
@@ -480,6 +526,8 @@ class AudioToVideoApp:
         self.chk_srt.pack(side="left")
         self.chk_txt = self._check(row, "chk.txt", self.txt_var)
         self.chk_txt.pack(side="left", padx=(16, 0))
+        self.chk_vtt = self._check(row, "chk.vtt", self.vtt_var)
+        self.chk_vtt.pack(side="left", padx=(16, 0))
 
         # --- 选项 C · 视频生成 ---
         grp_c = self._group("group.options_c")
@@ -605,7 +653,7 @@ class AudioToVideoApp:
         """pipeline 回调：text 已在生成时翻译，无法回译（故清空 key 记录）。"""
         self._stage_key = None
         self._stage_kwargs = {}
-        self._stage_note_key = None
+        self._stage_note_keys = []
         self.root.after(0, lambda: self.stage_var.set(text))
 
     # ---------- 引擎 ----------
@@ -738,7 +786,7 @@ class AudioToVideoApp:
         for widget in (self.btn_audio, self.btn_img, self.btn_dir,
                        self.btn_engine, self.btn_redetect):
             widget.config(state=state)
-        for widget in (self.chk_srt, self.chk_txt,
+        for widget in (self.chk_srt, self.chk_txt, self.chk_vtt,
                        self.chk_mux_original, self.chk_mux_denoised):
             widget.config(state=state)
         combo_state = tk.DISABLED if locked else "readonly"
@@ -772,6 +820,7 @@ class AudioToVideoApp:
             mux_original=bool(self.mux_original_var.get()),
             mux_denoised=bool(self.mux_denoised_var.get()),
             ffmpeg_path=self.ffmpeg_path,
+            vtt=bool(self.vtt_var.get()),
         )
 
     def start_processing(self):
@@ -809,7 +858,8 @@ class AudioToVideoApp:
             tasks.append(t("act.only_denoise"))
         if plan.need_stt:
             formats = " / ".join(
-                [name for name, on in (("SRT", plan.srt), ("TXT", plan.txt)) if on])
+                [name for name, on in (("SRT", plan.srt), ("TXT", plan.txt),
+                                       ("VTT", plan.vtt)) if on])
             tasks.append(t("task.subtitle", formats=formats))
         if plan.mux_original:
             tasks.append(t("task.mux_original"))

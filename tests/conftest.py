@@ -74,6 +74,20 @@ def sine_audio(ffmpeg_path, tmp_path):
 
 
 @pytest.fixture()
+def sine_video(ffmpeg_path, tmp_path):
+    """3 秒带音轨的测试 mp4（testsrc 画面 + 440Hz 正弦波），用于视频输入链路。"""
+    path = tmp_path / "testsrc.mp4"
+    res = _run([ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "testsrc=duration=3:size=160x120:rate=10",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+                "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "64k", str(path)])
+    if res.returncode != 0 or not path.is_file() or path.stat().st_size == 0:
+        pytest.skip("无法生成测试视频")
+    return str(path)
+
+
+@pytest.fixture()
 def denoise_model(monkeypatch):
     """RNNoise 模型已存在则用真模型；不存在时屏蔽下载，避免测试联网。"""
     from mp3tom4 import config, denoise

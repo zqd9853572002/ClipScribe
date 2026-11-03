@@ -7,7 +7,7 @@
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
-Mp3 to MP4 is a Windows desktop tool that pairs audio files with a still cover image and exports MP4 videos. It can also transcribe audio into SRT and TXT subtitles and reduce background noise before recognition or export.
+Mp3 to MP4 is a Windows desktop tool that pairs audio files with a still cover image and exports MP4 videos. It can also transcribe audio into SRT, VTT, and TXT subtitles and reduce background noise before recognition or export. Video files are accepted as well: MP4, WebM, MKV, MOV, and M4V can be used directly as a subtitle or denoise source, and only their first audio track is read.
 
 ![Application window](docs/screenshots/en.png)
 
@@ -16,6 +16,7 @@ Mp3 to MP4 is a Windows desktop tool that pairs audio files with a still cover i
 - [Execution model](#execution-model)
 - [Common combinations](#common-combinations)
 - [Output files and naming](#output-files-and-naming)
+- [Subtitle formats](#subtitle-formats)
 - [Interface language](#interface-language)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -28,14 +29,14 @@ Mp3 to MP4 is a Windows desktop tool that pairs audio files with a still cover i
 
 ## Execution model
 
-Select one or more audio files, configure the three option groups below, then press **Start** once. Files are processed one after another, and each file runs only the steps its options require.
+Select one or more audio or video files, configure the three option groups below, then press **Start** once. Files are processed one after another, and each file runs only the steps its options require.
 
 | Group | Setting | Choices |
 | --- | --- | --- |
 | A · Noise reduction | Strength | Off / Light (RNNoise) / Strong (GTCRN neural network) |
 | B · Recognition and subtitles | Model | Off, tiny, base, small, medium, large-v3-turbo |
 | | Spoken language | Auto-detect / Chinese / English |
-| | Subtitle formats | SRT and TXT, selected independently |
+| | Subtitle formats | SRT, VTT, and TXT, selected independently |
 | C · Video output | Video files | MP4 with the original audio and/or MP4 with the denoised audio |
 | | Cover image | JPG, PNG, BMP, WEBP |
 | | Resolution | 1080p (default) / 720p / original image size |
@@ -43,7 +44,10 @@ Select one or more audio files, configure the three option groups below, then pr
 - Noise reduction runs at most once per file; subtitles and the denoised video reuse that result.
 - A cover image is required only when a video output is selected.
 - The denoised-video option requires noise reduction to be on; when noise reduction is Off, that option is ignored.
+- For video input, both cover MP4 options are greyed out with an explanation: a video supplies only its audio track, and its picture is never kept or remuxed.
 - Accepted audio formats are the ones FFmpeg can decode, including MP3, M4A, M4B, AAC, WAV, FLAC, OGG, OGA, OPUS, WMA, AIFF, APE, WV, AMR, AC3, and DTS.
+- Accepted video formats are MP4, WebM, MKV, MOV, and M4V. Only the first audio track is extracted (`-vn`, first audio stream) and converted to 16 kHz mono WAV before recognition, so a multi-track video cannot switch tracks.
+- A video with no audio track stops with a readable message ("The input has no usable audio track…") instead of raw FFmpeg stderr.
 
 Defaults: 1080p, large-v3-turbo, auto-detect, and light RNNoise.
 
@@ -51,7 +55,8 @@ Defaults: 1080p, large-v3-turbo, auto-detect, and light RNNoise.
 
 | Goal | What to select |
 | --- | --- |
-| Subtitles only | Any model except Off; check SRT and/or TXT; no cover needed |
+| Subtitles only | Any model except Off; check SRT, VTT, and/or TXT; no cover needed |
+| Subtitles from a video | Choose the video file; check SRT, VTT, and/or TXT; set the spoken language to English for English videos; leave both MP4 options unchecked (they are disabled for video input) |
 | MP4 with the original audio | Check "MP4 · Original Audio"; choose a cover |
 | MP4 with the denoised audio | Set noise reduction to Light or Strong; check "MP4 · Denoised Audio"; choose a cover |
 | Everything | Check both MP4 options and at least one subtitle format, and set noise reduction to Light or Strong |
@@ -66,14 +71,30 @@ For an input named `recording.mp3`:
 
 | Output | File name |
 | --- | --- |
-| Subtitles | `recording.srt`, `recording.txt` |
+| Subtitles | `recording.srt`, `recording.vtt`, `recording.txt` |
 | Video with the original audio | `recording.mp4` |
 | Denoised audio | `recording_denoised.wav` (48 kHz, stereo, 16-bit PCM) |
 | Video with the denoised audio | `recording_denoised.mp4` |
 
 Existing files are never overwritten. If a name is already taken, ` (1)`, ` (2)`, and so on are appended before the extension.
 
-Video is encoded as H.264 (libx264) at 1 frame per second, with AAC 192 kbps audio and the `faststart` flag. In 1080p and 720p modes, covers that are not 16:9 are scaled down and padded with black bars; original-size mode keeps the source dimensions, rounded down to even numbers. SRT and TXT subtitles are separate files; they are not burned into the video.
+For a video input such as `lecture.mp4` with SRT and VTT checked, the outputs are `lecture.srt` and `lecture.vtt`, plus `lecture_denoised.wav` when noise reduction is on. No `lecture.mp4` is written, and the original picture is never re-encoded.
+
+Video is encoded as H.264 (libx264) at 1 frame per second, with AAC 192 kbps audio and the `faststart` flag. In 1080p and 720p modes, covers that are not 16:9 are scaled down and padded with black bars; original-size mode keeps the source dimensions, rounded down to even numbers. SRT, VTT, and TXT subtitles are sidecar files; they are not burned into the video.
+
+## Subtitle formats
+
+| Format | File | Characteristics |
+| --- | --- | --- |
+| SubRip | `.srt` | Numbered cues; milliseconds separated by a comma |
+| WebVTT | `.vtt` | Starts with `WEBVTT` and a blank line; milliseconds separated by a period; no cue numbers |
+| Plain text | `.txt` | All segments joined into a single line, with a space inserted between Latin words |
+
+All three formats share the same layout rules: 42 display columns per line (a CJK character counts as 2), at most 3 lines per cue, empty segments skipped, and a minimum cue length of 0.2 seconds. Files are UTF-8 without a BOM.
+
+VTT output is deliberately plain: no `STYLE` blocks, no `NOTE` comments, no cue identifiers, and no karaoke timestamps. Any combination of SRT, VTT, and TXT can be produced in one run.
+
+VTT is unchecked by default. It shares the recognition-model switch with SRT and TXT, so it is greyed out when the model is set to Off, and its state is written to the configuration file.
 
 ## Interface language
 
@@ -153,7 +174,7 @@ mp3tom4/
 ├── ffmpeg.py       FFmpeg discovery, filters, muxing
 ├── denoise.py      noise reduction (RNNoise / GTCRN)
 ├── asr.py          speech recognition (faster-whisper)
-├── subtitle.py     SRT / TXT generation
+├── subtitle.py     SRT / VTT / TXT generation
 ├── pipeline.py     job orchestration
 ├── ui/             interface
 └── locale/         translation catalogs
@@ -175,7 +196,10 @@ Tests that invoke a real FFmpeg binary are marked `integration` and can be skipp
 2. **Cancellation is not instantaneous.** FFmpeg-based steps such as noise reduction and muxing stop immediately, but Whisper inference is a blocking call, so cancellation waits for the current segment to finish.
 3. **The first transcription is slow.** It includes downloading the model and can take minutes to tens of minutes depending on the network and model size.
 4. **Subtitles are sidecar files.** They are not burned into the video picture.
-5. **Log history is not retranslated.** Switching the interface language leaves existing log lines in their original language.
+5. **Video input keeps no picture.** A video is only an audio source: its frames are never kept, remuxed, or re-encoded, so the two cover MP4 options are disabled for video files.
+6. **Only the first audio track is used.** Multi-track videos, such as dual-language releases, cannot pick a track; the second and later tracks are ignored.
+7. **A silent video cannot be processed.** A video without an audio track stops with a readable message instead of FFmpeg stderr.
+8. **Log history is not retranslated.** Switching the interface language leaves existing log lines in their original language.
 
 ## License
 
