@@ -49,6 +49,7 @@
   "chk.mux_denoised": "MP4 · Denoised Audio",
   "chk.vad_long": "Prefer long sentences (less splitting)",
   "chk.loudnorm": "Loudness normalization (-16 LUFS)",
+  "chk.burn_subtitles": "Burn subtitles into the picture (hard subs)",
 
   "engine.prefix": "⚙ FFmpeg Engine: ",
   "engine.detecting": "Detecting...",
@@ -67,6 +68,10 @@
   "stage.video_no_mux": "Video input only provides its audio track, so cover MP4 does not apply",
   "stage.video_mux_skipped": "Cover MP4 is skipped for this run (video input only provides its audio track)",
   "stage.video_need_action": "For video input, tick at least one subtitle format or noise reduction",
+  "stage.burn_video": "Video input produces no cover MP4, so hard subtitles do not apply",
+  "stage.burn_need_mux": "No cover MP4 selected, so hard subtitles cannot be burned",
+  "stage.burn_need_format": "No subtitle format selected, so hard subtitles cannot be burned",
+  "stage.burn_no_libass": "This FFmpeg lacks libass, so hard subtitles cannot be burned",
   "stage.file_step": "File {index}/{total} · {name} · {step} ({step_index}/{step_total})",
 
   "step.denoise": "reducing noise",
@@ -117,6 +122,8 @@
   "log.ffmpeg_rejected_header": ">>> Found but unusable builds:\n",
   "log.ffmpeg_rejected_item": "    - {path} (libx264={libx264}, aac={aac})\n",
   "log.ffmpeg_manual": ">>> ✅ FFmpeg set manually: {path}\n",
+  "log.burn_unavailable": ">>> ⚠ This FFmpeg lacks libass; subtitle burn-in is unavailable, everything else works normally.\n",
+  "log.burn_font_missing": "  ⚠ No CJK font found (Microsoft YaHei / Noto Sans CJK SC); hard subtitles may show missing glyphs.\n",
   "log.audio_imported": ">>> Imported {count} audio / video file(s).\n",
   "log.output_auto": ">>> Output folder defaults to the source file's folder: {dir}\n",
   "log.output_fallback": ">>> No output folder set, falling back to the source file's folder: {dir}\n",

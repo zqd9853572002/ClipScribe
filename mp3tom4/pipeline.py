@@ -26,7 +26,7 @@ from .config import (
     resolve_option,
 )
 from .denoise import prepare_asr_audio, render_denoised_audio
-from .ffmpeg import convert_one, probe_duration, unique_path
+from .ffmpeg import convert_one, detect_cjk_font, probe_duration, unique_path
 from .i18n import t
 from .subtitle import write_srt, write_txt, write_vtt
 
@@ -63,6 +63,7 @@ LOG_MUX_START = "log.mux_start"
 LOG_MUX_CANCELLED = "log.mux_cancelled"
 LOG_MUX_DONE = "log.mux_done"
 LOG_MUX_FAILED = "log.mux_failed"
+LOG_MUX_BURN = "log.burn_font_missing"
 LOG_FILE_CANCELLED = "log.file_cancelled"
 LOG_CRASH = "log.crash"
 LOG_SEPARATOR = "\n" + "=" * 64 + "\n"
@@ -105,6 +106,8 @@ class JobPlan:
     initial_prompt: str = ""
     vad_mode: str = DEFAULT_VAD_MODE
     loudnorm_enabled: bool = True
+    # 硬字幕烧录（依赖掩码后的值；见 `option_flags()`）
+    burn_subtitles: bool = False
 
 
 def denoise_desc(mode):
@@ -114,8 +117,18 @@ def denoise_desc(mode):
     return option_label(DENOISE_OPTIONS, mode)
 
 
+def burn_allowed(burn_subtitles, need_stt, mux_original, mux_denoised, has_video):
+    """硬字幕烧录的依赖掩码：只有「有 MP4 输出 + 有字幕 + 非视频输入」才生效。
+
+    单点定义，`option_flags()` / `build_plan()` / UI 置灰共用同一份判定，
+    避免界面、摘要与执行计划三处各算各的。
+    """
+    return bool(burn_subtitles) and need_stt and (mux_original or mux_denoised) \
+        and not has_video
+
+
 def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised,
-                 vtt=False, has_video=False):
+                 vtt=False, burn_subtitles=False, has_video=False):
     """把界面选项折算成「本次要做什么」的布尔组合（纯函数，不触碰工作线程）。
 
     `has_video` 是**视频掩码**的单一事实源：视频输入只提取音轨，因此配图 MP4
@@ -124,6 +137,9 @@ def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised,
 
     另外 `need_denoise` 直接等于 `denoise_on`：只要降噪组不是 off，就必须真的
     执行降噪，否则「音频 + 降噪 + 原声 MP4」这类组合会静默丢掉降噪结果。
+
+    `burn_subtitles` 是**从属功能**，不是独立步骤：烧录依附于「配图 MP4 封装」，
+    因此没有 MP4 输出、没有字幕（`need_stt` 为假）或视频输入时一律掩码为 False。
     """
     denoise_on = denoise_code != "off"
     srt = bool(srt)
@@ -134,6 +150,7 @@ def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised,
     need_stt = (model_code != STT_OFF) and (srt or txt or vtt)
     need_denoise = denoise_on
     only_denoise = denoise_on and not need_stt and not mux_original and not mux_denoised
+    burn = burn_allowed(burn_subtitles, need_stt, mux_original, mux_denoised, has_video)
     return {
         "stt_on": model_code != STT_OFF,
         "denoise_on": denoise_on,
@@ -142,18 +159,21 @@ def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised,
         "mux_original": mux_original,
         "mux_denoised": mux_denoised,
         "only_denoise": only_denoise,
+        "burn_subtitles": burn,
     }
 
 
 def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, denoise_code,
                lang_code, srt, txt, mux_original, mux_denoised, ffmpeg_path="",
                vtt=False, initial_prompt="", vad_mode=DEFAULT_VAD_MODE,
-               loudnorm_enabled=True, has_video=False):
+               loudnorm_enabled=True, burn_subtitles=False, has_video=False):
     """由纯值（非 Tk 变量）构造 JobPlan，供 UI 在主线程调用。
 
     所有 “*_mode / *_code” 参数均为**内部值**；`size_mode` 额外兼容旧版中文
     显示文案，避免旧配置在升级瞬间失效。`has_video` 语义见 `option_flags()`：
     视频输入下配图 MP4 一律掩码为 False，且 `need_denoise` 只由降噪开关决定。
+    `burn_subtitles` 必须走同一份依赖掩码（`burn_allowed()`），否则界面置灰而
+    计划仍为 True 时，会在没有字幕的封装里尝试烧录。
     """
     model_name = None if model_code == STT_OFF else model_code
     denoise_mode = None if denoise_code == "off" else denoise_code
@@ -171,6 +191,7 @@ def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, de
     # 降噪不是「附属步骤」而是用户组 A 的独立意图：只要开了就必须执行，
     # 否则 AC（降噪 + 原声 MP4）这类组合会静默跳过降噪。
     need_denoise = denoise_mode is not None
+    burn = burn_allowed(burn_subtitles, need_stt, mux_original, mux_denoised, has_video)
 
     return JobPlan(
         audio_files=list(audio_files),
@@ -192,6 +213,7 @@ def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, de
         initial_prompt=str(initial_prompt or "").strip(),
         vad_mode=vad_mode if vad_mode in VAD_MODES else DEFAULT_VAD_MODE,
         loudnorm_enabled=bool(loudnorm_enabled),
+        burn_subtitles=burn,
     )
 
 
@@ -227,6 +249,12 @@ class Pipeline:
         self._stop_cb = should_stop
         self._proc_cb = on_proc
         self._done_cb = on_done
+        # 烧录上下文：本文件的字幕片段 / 已落盘的 SRT / 临时 SRT / 字体
+        self._segments = []
+        self._srt_path = ""
+        self._burn_srt = ""
+        self._temps = []
+        self._burn_font_name = None
 
     # ---------- 回调包装 ----------
     def log(self, text, is_error=False):
@@ -247,6 +275,34 @@ class Pipeline:
     def _set_proc(self, proc):
         if self._proc_cb:
             self._proc_cb(proc)
+
+    # ---------- 硬字幕烧录辅助 ----------
+    def _burn_font(self):
+        """烧录用中文字体（结果缓存）；本机没有时返回空串并只提示一次。"""
+        if self._burn_font_name is None:
+            self._burn_font_name = detect_cjk_font()
+            if not self._burn_font_name:
+                self.log(t(LOG_MUX_BURN))
+        return self._burn_font_name
+
+    def _burn_subtitle_path(self):
+        """烧录用 SRT 路径：已产出 SRT 就复用，否则写一份临时 SRT（不落盘给用户）。
+
+        「只勾 VTT / TXT」时用户不应在输出目录里多出一份 SRT，因此临时文件放在
+        系统临时目录，并在 `run()` 结束时统一清理。
+        """
+        if self._srt_path:
+            return self._srt_path
+        if self._burn_srt:  # 两个 MP4 步骤复用同一份临时 SRT
+            return self._burn_srt
+        if not self._segments:
+            return ""
+        handle, path = tempfile.mkstemp(prefix="mp3tomp4_burn_", suffix=".srt")
+        os.close(handle)
+        self._temps.append(path)
+        write_srt(self._segments, path)
+        self._burn_srt = path
+        return path
 
     # ---------- 单文件步骤 ----------
     def _do_stt(self, asr_src, stem, duration, p_start, p_end, *,
@@ -300,11 +356,17 @@ class Pipeline:
                 self.log(t(LOG_ASR_EMPTY), True)
                 return False
 
+            # 供硬字幕烧录复用：勾了 SRT 直接用它，否则由 _burn_subtitle_path()
+            # 用这里保存的片段临时生成一份（用户无感知）。
+            self._segments = segments
+            self._srt_path = ""
+
             produced = []
             if plan.srt:
                 srt_path = unique_path(os.path.join(plan.output_dir, f"{stem}.srt"))
                 write_srt(segments, srt_path)
                 produced.append(os.path.basename(srt_path))
+                self._srt_path = srt_path
             if plan.txt:
                 txt_path = unique_path(os.path.join(plan.output_dir, f"{stem}.txt"))
                 write_txt(segments, txt_path)
@@ -335,10 +397,15 @@ class Pipeline:
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
 
-    def _mux_one(self, audio_src, out_path, duration, p_start, p_end):
-        """封面 + 音频封装 MP4；取消或失败时删除半成品。"""
+    def _mux_one(self, audio_src, out_path, duration, p_start, p_end, sub_path=""):
+        """封面 + 音频封装 MP4；取消或失败时删除半成品。
+
+        `sub_path` 非空时把字幕烧进画面：路径在 `convert_one()` 内部转成临时
+        ASCII 目录里的相对文件名，这里只管传绝对路径与字体。
+        """
         plan = self.plan
         self.log(t(LOG_MUX_START, name=os.path.basename(out_path)))
+        burn_sub = (sub_path or "") if plan.burn_subtitles else ""
         rc, err = convert_one(
             plan.ffmpeg_path, audio_src, plan.image_path, out_path, plan.size_mode, duration,
             on_progress=lambda p: self.set_progress(
@@ -346,6 +413,8 @@ class Pipeline:
             should_stop=self.should_stop,
             on_proc=self._set_proc,
             loudnorm=plan.loudnorm_enabled,
+            sub_path=burn_sub,
+            font_name=self._burn_font() if burn_sub else "",
         )
         if self.should_stop():
             remove_file_quiet(out_path)
@@ -376,6 +445,10 @@ class Pipeline:
                 stem = os.path.splitext(base_name)[0]
                 self.set_progress(0)
                 self.log(t(LOG_FILE_START, index=index, total=total, name=base_name))
+                # 烧录上下文按文件重置，避免上一个文件的字幕串到下一个
+                self._segments = []
+                self._srt_path = ""
+                self._burn_srt = ""
 
                 duration = 0.0
                 if plan.need_stt or plan.mux_original or plan.mux_denoised:
@@ -439,8 +512,11 @@ class Pipeline:
                             continue
                         out_path = unique_path(
                             os.path.join(plan.output_dir, f"{stem}{suffix}.mp4"))
+                        sub_path = self._burn_subtitle_path() \
+                            if plan.burn_subtitles else ""
                         if not self._mux_one(src_audio, out_path,
-                                             duration, p_start, p_end):
+                                             duration, p_start, p_end,
+                                             sub_path=sub_path):
                             if self.should_stop():
                                 cancelled = True
                                 break
@@ -463,6 +539,10 @@ class Pipeline:
             self.log(t(LOG_CRASH, summary=summary), True)
         finally:
             self._set_proc(None)
+            # 烧录用的临时 SRT 一律不留给用户（异常 / 取消路径同样清理）
+            for temp_path in self._temps:
+                remove_file_quiet(temp_path)
+            self._temps = []
             self.log(LOG_SEPARATOR)
             if self.should_stop():
                 self.log(t(LOG_CANCELLED_TOTAL, completed=completed, total=total), True)

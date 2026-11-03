@@ -20,7 +20,7 @@ from pathlib import Path
 from .i18n import t, text_for
 
 APP_NAME = "Mp3ToMp4"
-APP_VERSION = "5.2.0"
+APP_VERSION = "5.3.0"
 
 # 项目根目录（原单文件脚本所在目录）：用于探测随程序放置的 ffmpeg.exe。
 # 原代码用 `Path(__file__).resolve().parent`，模块化后本文件位于 <根>/mp3tom4/，
@@ -89,6 +89,10 @@ DEFAULT_DENOISE = "arnndn"
 # Whisper 的 prompt 受 token 上限约束，过长既无收益也会拖慢编码，故在 UI 与调用层
 # 同时截断（UI 负责提示，这里兜住程序化调用）。
 ASR_PROMPT_MAX_CHARS = 800
+
+# ---------- 硬字幕烧录 ----------
+# 新功能默认关闭：老用户升级后行为不变，且部分 ffmpeg 构建没有 libass。
+DEFAULT_BURN_SUBTITLES = False
 
 # VAD 模式 → faster-whisper `vad_parameters` 的映射。
 # 注意：faster-whisper 1.2.1 的 VadOptions 字段名是 `threshold`（不是

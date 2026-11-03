@@ -26,7 +26,7 @@ KEY_WIDGETS = [
     "btn_audio", "lbl_audio",
     "cmb_denoise", "cmb_model", "cmb_lang",
     "chk_srt", "chk_txt", "chk_vtt",
-    "chk_mux_original", "chk_mux_denoised",
+    "chk_mux_original", "chk_mux_denoised", "chk_burn",
     "ent_prompt", "lbl_prompt_hint", "chk_vad_long", "chk_loudnorm",
     "btn_img", "lbl_img", "cmb_size",
     "btn_dir", "lbl_dir",
@@ -34,7 +34,7 @@ KEY_WIDGETS = [
     "progress", "text_area",
     "size_var", "progress_var", "stage_var", "stt_model_var", "stt_lang_var",
     "denoise_var", "srt_var", "txt_var", "vtt_var",
-    "mux_original_var", "mux_denoised_var",
+    "mux_original_var", "mux_denoised_var", "burn_var",
     "prompt_var", "vad_long_var", "loudnorm_var",
     "lang_display_var", "groups",
 ]
@@ -71,6 +71,12 @@ def app(monkeypatch):
             root.destroy()
         except Exception:
             pass
+
+
+def _with_note(hint, *note_keys):
+    """阶段文本的真实渲染：提示 +「 · 」连接的附注（与 `_set_stage` 一致）。"""
+    return t("stage.with_note", hint=hint,
+             note=" · ".join(t(key) for key in note_keys))
 
 
 def _group_title_texts(frame):
@@ -146,8 +152,10 @@ def test_default_options_and_start_availability(app):
     gui.audio_files = ["C:/fake/a.mp3"]
     gui._sync_options()
 
-    assert gui.stage_var.get() == t(
-        "stage.ready_hint", count=1, actions=t("act.only_denoise"))
+    # 硬字幕默认关闭，但复选框因「没有配图 MP4 输出」而置灰 → 阶段提示给出原因
+    assert gui.stage_var.get() == _with_note(
+        t("stage.ready_hint", count=1, actions=t("act.only_denoise")),
+        "stage.burn_need_mux")
     assert str(gui.btn_start.cget("state")) == "normal"
 
 
@@ -158,7 +166,8 @@ def test_linkage_greying_rules(app):
     # 降噪=关闭 → 降噪 MP4 复选框置灰，且「无任何处理方式」时不可开始
     gui.set_option(gui.cmb_denoise, "off")
     assert str(gui.chk_mux_denoised.cget("state")) == "disabled"
-    assert gui.stage_var.get() == t("stage.need_action")
+    assert gui.stage_var.get() == _with_note(
+        t("stage.need_action"), "stage.burn_need_mux")
     assert str(gui.btn_start.cget("state")) == "disabled"
 
     # 识别模型=关闭 → 语种与字幕格式一并置灰
@@ -170,15 +179,18 @@ def test_linkage_greying_rules(app):
     # 勾原声 MP4 但没有封面 → 提示缺封面且不可开始
     gui.mux_original_var.set(True)
     gui._sync_options()
-    assert gui.stage_var.get() == t("stage.need_cover")
+    # 此时已有 MP4 输出但没勾任何字幕格式 → 硬字幕原因切换为「缺字幕格式」
+    assert gui.stage_var.get() == _with_note(
+        t("stage.need_cover"), "stage.burn_need_format")
     assert str(gui.btn_start.cget("state")) == "disabled"
     assert gui.btn_img.cget("bg") == "#D97706"
 
     # 补上封面 → 可开始
     gui.image_path = "C:/fake/cover.png"
     gui._sync_options()
-    assert gui.stage_var.get() == t(
-        "stage.ready_hint", count=1, actions=t("act.mux_original"))
+    assert gui.stage_var.get() == _with_note(
+        t("stage.ready_hint", count=1, actions=t("act.mux_original")),
+        "stage.burn_need_format")
     assert str(gui.btn_start.cget("state")) == "normal"
 
     # 识别模型打开后语种恢复可编辑、字幕复选框解禁
@@ -433,8 +445,9 @@ def test_language_switch_updates_key_widgets(app):
     root.update()
     assert gui.btn_start.cget("text") == "▶ 开始执行"
     assert gui.btn_audio.cget("text") == "选择音频 / 视频"
-    assert gui.stage_var.get() == t(
-        "stage.ready_hint", count=1, actions=t("act.only_denoise"))
+    assert gui.stage_var.get() == _with_note(
+        t("stage.ready_hint", count=1, actions=t("act.only_denoise")),
+        "stage.burn_need_mux")
 
 
 def test_language_switch_rerenders_combos(app):
@@ -460,13 +473,16 @@ def test_language_switch_refreshes_stage(app):
     gui._sync_options()
 
     gui.apply_language("en")
-    assert gui.stage_var.get() == "Ready · 1 file(s) · Denoise only"
+    assert gui.stage_var.get() == _with_note(
+        "Ready · 1 file(s) · Denoise only", "stage.burn_need_mux")
 
     gui.apply_language("zh_TW")
-    assert gui.stage_var.get() == "就緒 · 1 個音訊 · 僅降噪音訊"
+    assert gui.stage_var.get() == _with_note(
+        "就緒 · 1 個音訊 · 僅降噪音訊", "stage.burn_need_mux")
 
     gui.apply_language("zh_CN")
-    assert gui.stage_var.get() == "就绪 · 1 个音频 · 仅降噪音频"
+    assert gui.stage_var.get() == _with_note(
+        "就绪 · 1 个音频 · 仅降噪音频", "stage.burn_need_mux")
 
 
 def test_log_uses_new_language_after_switch(app):
@@ -825,3 +841,145 @@ def test_quality_controls_lock_during_run(app):
     assert str(gui.ent_prompt.cget("state")) == "normal"
     assert str(gui.chk_vad_long.cget("state")) == "normal"
     assert str(gui.chk_loudnorm.cget("state")) == "normal"
+
+
+# ==================== 硬字幕烧录（复选框 / 四种置灰原因 / 持久化）====================
+def _libass_app(monkeypatch, subtitles=True, cfg=None):
+    """带可用 ffmpeg 的窗口（可选是否具备 libass），用于烧录置灰规则的用例。"""
+    info = {"path": "C:/ffmpeg.exe", "version": "ffmpeg version 9.0.2",
+            "libx264": True, "aac": True, "subtitles": subtitles}
+    base = {"ffmpeg_path": "C:/ffmpeg.exe"}
+    base.update(cfg or {})
+    root, gui, saved = _make_app(
+        monkeypatch, cfg=base,
+        discover=lambda saved_path=None: ([dict(info)], []))
+    gui.refresh_ffmpeg()
+    return root, gui, saved
+
+
+def test_burn_checkbox_defaults_off_in_video_group(app):
+    _, gui = app
+
+    assert gui.burn_var.get() is False
+    assert gui.chk_burn.master.master is gui.groups["group.options_c"]
+    assert gui.chk_burn.cget("text") == t("chk.burn_subtitles")
+
+
+def test_burn_blocked_without_mp4_output(monkeypatch):
+    """置灰原因 1：没有勾任何配图 MP4 输出。"""
+    root, gui, _saved = _libass_app(monkeypatch)
+    try:
+        gui.audio_files = ["C:/fake/a.mp3"]
+        _select_combo(gui, denoise="off", model="tiny", srt=True)
+        gui.burn_var.set(True)
+        gui._sync_options()
+
+        assert str(gui.chk_burn.cget("state")) == "disabled"
+        assert t("stage.burn_need_mux") in gui.stage_var.get()
+        assert gui._build_plan().burn_subtitles is False
+    finally:
+        root.destroy()
+
+
+def test_burn_blocked_without_subtitle_format(monkeypatch):
+    """置灰原因 2：有 MP4 输出，但一个字幕格式都没勾。"""
+    root, gui, _saved = _libass_app(monkeypatch)
+    try:
+        gui.audio_files = ["C:/fake/a.mp3"]
+        gui.image_path = "C:/fake/cover.png"
+        _select_combo(gui, denoise="off", model="tiny", mux_original=True)
+        gui.burn_var.set(True)
+        gui._sync_options()
+
+        assert str(gui.chk_burn.cget("state")) == "disabled"
+        assert t("stage.burn_need_format") in gui.stage_var.get()
+        assert gui._build_plan().burn_subtitles is False
+    finally:
+        root.destroy()
+
+
+def test_burn_blocked_for_video_input(monkeypatch):
+    """置灰原因 3：视频输入不产出配图 MP4。"""
+    root, gui, _saved = _libass_app(monkeypatch)
+    try:
+        gui.audio_files = ["C:/fake/clip.mp4"]
+        gui.image_path = "C:/fake/cover.png"
+        _select_combo(gui, denoise="off", model="tiny", srt=True, mux_original=True)
+        gui.burn_var.set(True)
+        gui._sync_options()
+
+        assert str(gui.chk_burn.cget("state")) == "disabled"
+        assert t("stage.burn_video") in gui.stage_var.get()
+        assert gui._build_plan().burn_subtitles is False
+    finally:
+        root.destroy()
+
+
+def test_burn_blocked_without_libass(monkeypatch):
+    """置灰原因 4：当前 FFmpeg 缺 libass（其余功能照常）。"""
+    root, gui, _saved = _libass_app(monkeypatch, subtitles=False)
+    try:
+        gui.audio_files = ["C:/fake/a.mp3"]
+        gui.image_path = "C:/fake/cover.png"
+        _select_combo(gui, denoise="off", model="tiny", srt=True, mux_original=True)
+        gui.burn_var.set(True)
+        gui._sync_options()
+
+        assert str(gui.chk_burn.cget("state")) == "disabled"
+        assert t("stage.burn_no_libass") in gui.stage_var.get()
+        # 计划层同样兜底：绝不把 subtitles 滤镜交给不支持的引擎
+        assert gui._build_plan().burn_subtitles is False
+    finally:
+        root.destroy()
+
+
+def test_burn_enabled_when_all_conditions_met(monkeypatch):
+    """MP4 + 字幕 + 音频输入 + libass 全部满足 → 可用，且计划里生效。"""
+    root, gui, _saved = _libass_app(monkeypatch)
+    try:
+        gui.audio_files = ["C:/fake/a.mp3"]
+        gui.image_path = "C:/fake/cover.png"
+        _select_combo(gui, denoise="off", model="tiny", txt=True, mux_original=True)
+        gui.burn_var.set(True)
+        gui._sync_options()
+
+        assert str(gui.chk_burn.cget("state")) == "normal"
+        assert t("stage.burn_need_mux") not in gui.stage_var.get()
+        assert t("stage.burn_no_libass") not in gui.stage_var.get()
+        assert gui._build_plan().burn_subtitles is True
+
+        # 执行期间与其它复选框一起锁定
+        gui.lock_ui(True)
+        assert str(gui.chk_burn.cget("state")) == "disabled"
+        gui.lock_ui(False)
+        assert str(gui.chk_burn.cget("state")) == "normal"
+    finally:
+        root.destroy()
+
+
+def test_burn_flag_persists_and_restores(monkeypatch):
+    root, gui, saved = _libass_app(monkeypatch)
+    try:
+        gui.burn_var.set(True)
+        gui._persist()
+        assert saved[-1]["burn_subtitles"] is True
+    finally:
+        root.destroy()
+
+    root2, gui2, _saved = _make_app(monkeypatch, cfg={"burn_subtitles": True})
+    try:
+        assert gui2.burn_var.get() is True
+    finally:
+        root2.destroy()
+
+
+def test_missing_libass_logs_hint_but_keeps_engine(monkeypatch):
+    """缺 libass 时只打一条提示，ffmpeg 依旧被采用（可选能力不影响可用性）。"""
+    root, gui, _saved = _libass_app(monkeypatch, subtitles=False)
+    try:
+        root.update()
+        root.update()
+        assert t("log.burn_unavailable") in gui.text_area.get("1.0", "end")
+        assert gui.ffmpeg_path == "C:/ffmpeg.exe"
+    finally:
+        root.destroy()

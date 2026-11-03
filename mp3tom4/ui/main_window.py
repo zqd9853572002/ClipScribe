@@ -17,6 +17,7 @@ from ..config import (
     APP_VERSION,
     ASR_PROMPT_MAX_CHARS,
     AUDIO_EXTS,
+    DEFAULT_BURN_SUBTITLES,
     DEFAULT_DENOISE,
     DEFAULT_MODE,
     DEFAULT_STT_LANG,
@@ -89,6 +90,8 @@ class AudioToVideoApp:
         self.output_dir = ""
         self.ffmpeg_path = ""
         self.ffmpeg_text = ""
+        # 当前引擎的完整能力字典（含可选的 subtitles / libass 能力）
+        self._engine_info = {}
         self._proc = None
         self._stop = False
         self._busy = False
@@ -150,6 +153,9 @@ class AudioToVideoApp:
         self.vtt_var = tk.BooleanVar(value=bool(self.cfg.get("vtt_enabled", False)))
         self.mux_original_var = tk.BooleanVar(value=bool(self.cfg.get("mux_original", False)))
         self.mux_denoised_var = tk.BooleanVar(value=bool(self.cfg.get("mux_denoised", False)))
+        # 硬字幕烧录：从属功能，默认关闭（见 pipeline.burn_allowed 的依赖掩码）
+        self.burn_var = tk.BooleanVar(
+            value=bool(self.cfg.get("burn_subtitles", DEFAULT_BURN_SUBTITLES)))
 
         # 识别质量控制：术语提示词 / 长句优先；成片响度标准化默认开启
         saved_prompt = str(self.cfg.get("asr_initial_prompt", "") or "")
@@ -303,6 +309,7 @@ class AudioToVideoApp:
             "vtt_enabled": bool(self.vtt_var.get()),
             "mux_original": bool(self.mux_original_var.get()),
             "mux_denoised": bool(self.mux_denoised_var.get()),
+            "burn_subtitles": bool(self.burn_var.get()),
             "asr_initial_prompt": self._prompt_value(),
             "asr_vad_mode": "long" if self.vad_long_var.get() else DEFAULT_VAD_MODE,
             "loudnorm_enabled": bool(self.loudnorm_var.get()),
@@ -321,7 +328,8 @@ class AudioToVideoApp:
         """把界面选项折算成「本次要做什么」的布尔组合（不触碰工作线程）。
 
         `has_video` 一并传入：视频掩码只在 flags 层做一次，界面校验、按钮状态、
-        动作摘要与执行计划因此共享同一份事实，不会各算各的。
+        动作摘要与执行计划因此共享同一份事实，不会各算各的。烧录的依赖掩码同样
+        在 flags 层完成（`burn_allowed()`），UI 只负责按结果置灰与提示。
         """
         return option_flags(
             resolve_option(STT_MODEL_OPTIONS, self.stt_model_var.get(),
@@ -333,8 +341,29 @@ class AudioToVideoApp:
             self.mux_original_var.get(),
             self.mux_denoised_var.get(),
             self.vtt_var.get(),
+            self.burn_var.get(),
             has_video=self._has_video_input(),
         )
+
+    def _libass_available(self) -> bool:
+        """当前引擎是否具备 libass（`subtitles` 滤镜）；探测失败一律视为不可用。"""
+        return bool(self._engine_info.get("subtitles"))
+
+    def _burn_block_reason(self, flags):
+        """硬字幕不可用的原因词条 key（可用时返回 None）。
+
+        判定顺序即提示优先级：先排除「结构性不适用」（视频输入、没有 MP4 输出、
+        没有字幕格式），最后才归因到引擎能力，避免把用户配置问题说成 FFmpeg 问题。
+        """
+        if self._has_video_input():
+            return "stage.burn_video"
+        if not (flags["mux_original"] or flags["mux_denoised"]):
+            return "stage.burn_need_mux"
+        if not (self.srt_var.get() or self.txt_var.get() or self.vtt_var.get()):
+            return "stage.burn_need_format"
+        if not self._libass_available():
+            return "stage.burn_no_libass"
+        return None
 
     def _validate_plan(self):
         """返回 (是否可执行, 不可执行时的阶段词条 key)。
@@ -472,6 +501,14 @@ class AudioToVideoApp:
                 notes.append("stage.video_mux_skipped")
             else:
                 notes.append("stage.video_no_mux")
+
+        # 硬字幕：置灰与提示共用同一份判定，提示必须说清**具体原因**
+        # （没有 MP4 输出 / 没有字幕格式 / 视频输入 / 引擎缺 libass）。
+        burn_reason = self._burn_block_reason(flags)
+        self.chk_burn.config(state=tk.DISABLED if burn_reason else tk.NORMAL)
+        if burn_reason and self.audio_files:
+            notes.append(burn_reason)
+
         ok, key = self._validate_plan()
         if ok:
             self._set_stage(
@@ -642,6 +679,10 @@ class AudioToVideoApp:
         self.chk_loudnorm.pack(side="left")
 
         row = self._row(grp_c)
+        self.chk_burn = self._check(row, "chk.burn_subtitles", self.burn_var)
+        self.chk_burn.pack(side="left")
+
+        row = self._row(grp_c)
         self._caption(row, "label.cover").pack(side="left")
         self.btn_img = tk.Button(row, textvariable=self._var_for("btn.select_cover"),
                                  font=("Microsoft YaHei", 9, "bold"),
@@ -776,6 +817,7 @@ class AudioToVideoApp:
             kept = self._find_usable(saved, usable)
             best = kept or usable[0]
             self.ffmpeg_path = best["path"]
+            self._engine_info = best
             ver = best["version"].replace("ffmpeg version", "").strip()
             short = ver.split("Copyright")[0].strip()[:60]
             self.ffmpeg_text = f"{best['path']}  ({short})"
@@ -784,12 +826,16 @@ class AudioToVideoApp:
             if kept:
                 self.log(t("log.ffmpeg_kept", path=kept["path"]))
             self.log(t("log.ffmpeg_enabled", info=self.ffmpeg_text))
+            # libass 是可选能力：缺了只是不能烧录硬字幕，其余功能照常
+            if not self._libass_available():
+                self.log(t("log.burn_unavailable"))
             if rejected:
                 self.log(t("log.ffmpeg_skipped",
                            dirs="; ".join(os.path.dirname(r["path"]) for r in rejected)))
             self._persist_path_only()
         else:
             self.ffmpeg_path = ""
+            self._engine_info = {}
             self._engine_state = "missing"
             self._refresh_engine_label()
             self.log(t("log.ffmpeg_none"), is_error=True)
@@ -834,11 +880,14 @@ class AudioToVideoApp:
             )
             return
         self.ffmpeg_path = path
+        self._engine_info = info
         self.ffmpeg_text = f"{path}  ({info['version'].split('Copyright')[0].strip()[:60]})"
         self._engine_state = "ok"
         self._refresh_engine_label()
         self._persist_path_only()
         self.log(t("log.ffmpeg_manual", path=path))
+        if not self._libass_available():
+            self.log(t("log.burn_unavailable"))
 
     # ---------- 选择文件 ----------
     def select_audio(self):
@@ -888,7 +937,7 @@ class AudioToVideoApp:
             widget.config(state=state)
         for widget in (self.chk_srt, self.chk_txt, self.chk_vtt,
                        self.chk_mux_original, self.chk_mux_denoised,
-                       self.chk_vad_long, self.chk_loudnorm):
+                       self.chk_vad_long, self.chk_loudnorm, self.chk_burn):
             widget.config(state=state)
         combo_state = tk.DISABLED if locked else "readonly"
         for widget in (self.cmb_model, self.cmb_lang, self.cmb_denoise, self.cmb_size):
@@ -926,6 +975,9 @@ class AudioToVideoApp:
             initial_prompt=self._prompt_value(),
             vad_mode="long" if self.vad_long_var.get() else DEFAULT_VAD_MODE,
             loudnorm_enabled=bool(self.loudnorm_var.get()),
+            # 引擎没有 libass 时直接关掉：宁可产出无字幕成片，也不要让
+            # ffmpeg 因为未知滤镜（subtitles）整条命令失败。
+            burn_subtitles=bool(self.burn_var.get()) and self._libass_available(),
         )
 
     def start_processing(self):

@@ -49,6 +49,7 @@
   "chk.mux_denoised": "降噪音频配图 MP4",
   "chk.vad_long": "长句优先（减少切碎）",
   "chk.loudnorm": "响度标准化（-16 LUFS）",
+  "chk.burn_subtitles": "字幕烧录进画面（硬字幕）",
 
   "engine.prefix": "⚙ FFmpeg 引擎：",
   "engine.detecting": "检测中...",
@@ -67,6 +68,10 @@
   "stage.video_no_mux": "视频输入只提取音轨，配图 MP4 不适用",
   "stage.video_mux_skipped": "配图 MP4 本次跳过（视频输入只提取音轨）",
   "stage.video_need_action": "视频输入请至少勾选一种字幕格式或降噪",
+  "stage.burn_video": "视频输入不产出配图 MP4，硬字幕不适用",
+  "stage.burn_need_mux": "未勾选配图 MP4，硬字幕无法烧录",
+  "stage.burn_need_format": "未勾选任何字幕格式，硬字幕无法烧录",
+  "stage.burn_no_libass": "当前 FFmpeg 缺少 libass，无法烧录硬字幕",
   "stage.file_step": "第 {index}/{total} 个 · {name} · 正在{step}（{step_index}/{step_total}）",
 
   "step.denoise": "降噪",
@@ -117,6 +122,8 @@
   "log.ffmpeg_rejected_header": ">>> 检测到但不可用的版本:\n",
   "log.ffmpeg_rejected_item": "    - {path} (libx264={libx264}, aac={aac})\n",
   "log.ffmpeg_manual": ">>> ✅ 已手动指定 FFmpeg: {path}\n",
+  "log.burn_unavailable": ">>> ⚠ 当前 FFmpeg 缺少 libass，字幕烧录不可用，其余功能正常。\n",
+  "log.burn_font_missing": "  ⚠ 未找到中文字体（Microsoft YaHei / Noto Sans CJK SC），硬字幕可能缺字。\n",
   "log.audio_imported": ">>> 已导入 {count} 个音频 / 视频文件。\n",
   "log.output_auto": ">>> 已自动设定输出目录为文件所在目录: {dir}\n",
   "log.output_fallback": ">>> 未指定输出目录，已回退到文件所在目录：{dir}\n",

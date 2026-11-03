@@ -553,3 +553,186 @@ def test_flow_8_video_input_to_vtt(monkeypatch, ffmpeg_path, sine_video, tmp_pat
     assert (out_dir / f"{stem}.vtt").is_file()
     assert not list(out_dir.glob("*.mp4"))
     assert not [name for name in out_dir.iterdir() if name.name != f"{stem}.vtt"]
+
+
+# ==================== 硬字幕烧录（依赖掩码 / 传参 / 临时 SRT）====================
+def test_plan_burn_subtitles_defaults_off():
+    assert make_plan(srt=True, mux_original=True).burn_subtitles is False
+
+
+@pytest.mark.parametrize("overrides", [
+    # 没有 MP4 输出
+    {"srt": True, "burn_subtitles": True},
+    # 有 MP4 但识别关闭 → 没有字幕可烧
+    {"model_code": "off", "srt": True, "mux_original": True, "burn_subtitles": True},
+    # 视频输入 → 配图 MP4 已被掩码，烧录随之失效
+    {"srt": True, "mux_original": True, "burn_subtitles": True, "has_video": True},
+    # 降噪关闭但勾了降噪 MP4 → mux 被掩码，烧录同样失效
+    {"denoise_code": "off", "srt": True, "mux_denoised": True, "burn_subtitles": True},
+])
+def test_burn_subtitles_masked_off(overrides):
+    plan = make_plan(**overrides)
+    assert plan.burn_subtitles is False
+
+    flags = option_flags(
+        overrides.get("model_code", BASE["model_code"]),
+        overrides.get("denoise_code", BASE["denoise_code"]),
+        overrides.get("srt", False),
+        overrides.get("txt", False),
+        overrides.get("mux_original", False),
+        overrides.get("mux_denoised", False),
+        overrides.get("vtt", False),
+        overrides.get("burn_subtitles", False),
+        has_video=overrides.get("has_video", False),
+    )
+    assert flags["burn_subtitles"] is False
+
+
+def test_burn_subtitles_enabled_when_all_conditions_met():
+    plan = make_plan(srt=True, mux_original=True, burn_subtitles=True)
+    assert plan.burn_subtitles is True
+
+    flags = option_flags("tiny", "off", True, False, True, False, False, True)
+    assert flags["burn_subtitles"] is True
+
+
+@pytest.mark.parametrize("overrides", [
+    {"txt": True},
+    {"vtt": True},
+])
+def test_burn_subtitles_accepts_any_subtitle_format(overrides):
+    """烧录只用 SRT，但 TXT / VTT 也能触发（内部临时生成一份 SRT 给烧录用）。"""
+    plan = make_plan(mux_original=True, burn_subtitles=True, **overrides)
+    assert plan.burn_subtitles is True
+
+
+def test_burn_subtitles_with_denoised_mp4_only():
+    plan = make_plan(denoise_code="arnndn", srt=True, mux_denoised=True,
+                     burn_subtitles=True)
+    assert plan.mux_original is False and plan.mux_denoised is True
+    assert plan.burn_subtitles is True
+
+
+def test_burn_does_not_add_progress_step():
+    """烧录是封装步骤的内部行为，不得新增进度节点。"""
+    plain = build_steps(make_plan(srt=True, mux_original=True))
+    burned = build_steps(make_plan(srt=True, mux_original=True, burn_subtitles=True))
+    assert burned == plain
+    assert [name for name, _a, _b in burned] == [
+        pipeline_mod.STEP_STT, pipeline_mod.STEP_MUX_ORIGINAL]
+
+
+def _stub_convert(monkeypatch, captured, font="Microsoft YaHei"):
+    def fake_convert(ffmpeg, audio, image, out, mode, duration, on_progress,
+                     should_stop, on_proc=None, loudnorm=False, sub_path=None,
+                     font_name=""):
+        captured.update(sub_path=sub_path, font_name=font_name,
+                        progress=on_progress, loudnorm=loudnorm)
+        Path(out).write_bytes(b"x")
+        return 0, ""
+
+    monkeypatch.setattr(pipeline_mod, "convert_one", fake_convert)
+    monkeypatch.setattr(pipeline_mod, "detect_cjk_font", lambda: font)
+
+
+def test_mux_one_forwards_subtitle_path(monkeypatch, tmp_path):
+    captured = {}
+    _stub_convert(monkeypatch, captured)
+    plan = make_plan(srt=True, mux_original=True, burn_subtitles=True)
+    sub = str(tmp_path / "sub.srt")
+
+    ok = Pipeline(plan)._mux_one("/tmp/a.mp3", str(tmp_path / "o.mp4"), 3.0,
+                                 0.0, 100.0, sub_path=sub)
+
+    assert ok is True
+    assert captured["sub_path"] == sub
+    assert captured["font_name"] == "Microsoft YaHei"
+
+
+def test_mux_one_ignores_subtitles_when_masked(monkeypatch, tmp_path):
+    captured = {}
+    _stub_convert(monkeypatch, captured)
+    plan = make_plan(srt=True, mux_original=True, burn_subtitles=False)
+
+    Pipeline(plan)._mux_one("/tmp/a.mp3", str(tmp_path / "o.mp4"), 3.0,
+                            0.0, 100.0, sub_path=str(tmp_path / "sub.srt"))
+
+    assert not captured["sub_path"]
+
+
+def test_burn_temp_srt_is_generated_once(monkeypatch):
+    """只勾 VTT 时内部临时生成一份 SRT；两个 MP4 步骤复用同一份。"""
+    plan = make_plan(vtt=True, mux_original=True, mux_denoised=True,
+                     denoise_code="arnndn", burn_subtitles=True)
+    pipeline = Pipeline(plan)
+    pipeline._segments = [{"start": 0.0, "end": 1.0, "text": "hello"}]
+
+    first = pipeline._burn_subtitle_path()
+    second = pipeline._burn_subtitle_path()
+
+    assert first and first == second
+    assert Path(first).is_file()
+    assert len(pipeline._temps) == 1
+    Path(first).unlink(missing_ok=True)
+
+
+def test_burn_font_missing_logs_once(monkeypatch, tmp_path):
+    """本机没有中文字体时只提示一次，且不阻塞烧录（交给 libass 自行回退）。"""
+    captured = {}
+    _stub_convert(monkeypatch, captured, font="")
+    plan = make_plan(srt=True, mux_original=True, burn_subtitles=True)
+    rec = Recorder()
+    pipeline = Pipeline(plan, log=rec.log)
+
+    for name in ("a.mp4", "b.mp4"):
+        pipeline._mux_one("/tmp/a.mp3", str(tmp_path / name), 3.0, 0.0, 100.0,
+                          sub_path=str(tmp_path / "sub.srt"))
+
+    assert captured["font_name"] == ""
+    from mp3tom4.i18n import t as tr
+
+    warnings = [text for text, _err in rec.logs if text == tr("log.burn_font_missing")]
+    assert len(warnings) == 1
+
+
+@pytest.mark.integration
+def test_flow_9_vtt_only_with_burn_keeps_srt_off_disk(monkeypatch, ffmpeg_path,
+                                                      sine_audio, black_png, tmp_path):
+    """勾了烧录但只勾 VTT：产物只有 .vtt + 带硬字幕的 .mp4，SRT 不落盘。"""
+    monkeypatch.setattr(pipeline_mod, "transcribe_audio", _fake_transcribe)
+    out_dir = _out_dir(tmp_path)
+    plan = build_plan(
+        audio_files=[sine_audio], output_dir=str(out_dir), image_path=black_png,
+        size_mode="720p", model_code="tiny", denoise_code="off",
+        lang_code="auto", srt=False, txt=False, vtt=True,
+        mux_original=True, mux_denoised=False, ffmpeg_path=ffmpeg_path,
+        burn_subtitles=True)
+    assert plan.burn_subtitles is True
+
+    run_pipeline(plan)
+
+    stem = Path(sine_audio).stem
+    assert sorted(path.name for path in out_dir.iterdir()) == [
+        f"{stem}.mp4", f"{stem}.vtt"]
+    assert 2.5 <= probe_duration(ffmpeg_path, str(out_dir / f"{stem}.mp4")) <= 3.6
+
+
+@pytest.mark.integration
+def test_flow_10_srt_is_reused_for_burn(monkeypatch, ffmpeg_path, sine_audio,
+                                        black_png, tmp_path):
+    """勾了 SRT + 烧录：直接复用那份 SRT，不额外生成第二份。"""
+    monkeypatch.setattr(pipeline_mod, "transcribe_audio", _fake_transcribe)
+    out_dir = _out_dir(tmp_path)
+    plan = build_plan(
+        audio_files=[sine_audio], output_dir=str(out_dir), image_path=black_png,
+        size_mode="720p", model_code="tiny", denoise_code="off",
+        lang_code="auto", srt=True, txt=False, vtt=False,
+        mux_original=True, mux_denoised=False, ffmpeg_path=ffmpeg_path,
+        burn_subtitles=True)
+
+    run_pipeline(plan)
+
+    stem = Path(sine_audio).stem
+    assert sorted(path.name for path in out_dir.iterdir()) == [
+        f"{stem}.mp4", f"{stem}.srt"]
+    assert 2.5 <= probe_duration(ffmpeg_path, str(out_dir / f"{stem}.mp4")) <= 3.6

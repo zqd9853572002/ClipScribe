@@ -43,6 +43,7 @@ Select one or more audio or video files, configure the three option groups below
 | | Cover image | JPG, PNG, BMP, WEBP |
 | | Resolution | 1080p (default) / 720p / original image size |
 | | Loudness normalization | `-16 LUFS`; on by default; applies to the finished MP4 only |
+| | Burn subtitles into the picture (hard subs) | Off by default; needs a cover MP4 output, a subtitle format, an audio input, and FFmpeg with libass |
 
 - Noise reduction runs at most once per file; subtitles and the denoised video reuse that result. Whenever the noise-reduction group is not Off, `{name}_denoised.wav` is always written, even if no subtitle or video output uses it.
 - Any combination of the three groups can run: each group on its own, or A+B, A+C, B+C, and A+B+C. The only combination that cannot run is a video input with nothing checked except a cover MP4 option; the app then asks for at least one subtitle format or noise reduction.
@@ -55,11 +56,12 @@ Select one or more audio or video files, configure the three option groups below
 - The glossary / prompt is handed to Whisper as `initial_prompt`. It mainly helps with names, company names, and domain jargon, and also steadies punctuation. Text longer than 800 characters is truncated, and the log says so.
 - Long sentences first switches the VAD settings from standard (`min_silence_duration_ms=400`, `speech_pad_ms=200`) to long (`700`, `300`, and `threshold=0.4`), so a long Chinese sentence is less likely to be split into pieces. It is off by default.
 - Loudness normalization appends `loudnorm=I=-16:TP=-1.5:LRA=11` to the audio chain of the finished MP4, keeping clips from different sources at a similar level. It is applied only to video output, never to the audio sent to recognition, and it is greyed out for video input, which produces no cover MP4.
+- Burn subtitles into the picture renders the SRT directly into the frames with FFmpeg's `subtitles` filter (libass), so the MP4 itself shows the text. It is off by default, and it is available only when all four conditions hold: at least one cover MP4 output is checked, at least one subtitle format is checked, the input is audio rather than video, and the current FFmpeg includes libass. Otherwise the checkbox is greyed out with the exact reason: "Video input produces no cover MP4, so hard subtitles do not apply", "No cover MP4 selected, so hard subtitles cannot be burned", "No subtitle format selected, so hard subtitles cannot be burned", or "This FFmpeg lacks libass, so hard subtitles cannot be burned". Sidecar subtitle files are still written, so burn-in and sidecar output never conflict.
 - Light noise reduction uses RNNoise. If the RNNoise model is unavailable (not downloaded, or the download failed), the chain falls back to `highpass=f=80,afftdn=nf=-25:tn=1`, FFmpeg's built-in spectral denoiser, which needs no download. The log says "falling back to spectral denoising (afftdn)", so a degraded run is visible instead of silently doing almost nothing.
 - `arnndn_mix` in `config.json` (default `0.8`, range 0.0–1.0) blends the denoised signal with the original: `1.0` is fully denoised, and lower values keep more of the original voice. There is no control for it in the window; edit the configuration file by hand.
 - Long silent stretches are less likely to produce hallucinated subtitle lines such as "thanks for watching", "subtitles by …", or "please like and subscribe": the recognition thresholds are stricter, and segments of 3 seconds or more whose text matches a known hallucination pattern are dropped, with the count written to the log. See [Known limitations](#known-limitations) for what this does not catch.
 
-Defaults: 1080p, large-v3-turbo, auto-detect, light RNNoise, loudness normalization on, and long sentences first off.
+Defaults: 1080p, large-v3-turbo, auto-detect, light RNNoise, loudness normalization on, long sentences first off, and burn subtitles off.
 
 ## Common combinations
 
@@ -97,7 +99,7 @@ Existing files are never overwritten. If a name is already taken, ` (1)`, ` (2)`
 
 For a video input such as `lecture.mp4` with SRT and VTT checked, the outputs are `lecture.srt` and `lecture.vtt`, plus `lecture_denoised.wav` when noise reduction is on. No `lecture.mp4` is written, and the original picture is never re-encoded.
 
-Video is encoded as H.264 (libx264) at 1 frame per second, with AAC 192 kbps audio and the `faststart` flag. In 1080p and 720p modes, covers that are not 16:9 are scaled down and padded with black bars; original-size mode keeps the source dimensions, rounded down to even numbers. SRT, VTT, and TXT subtitles are sidecar files; they are not burned into the video.
+Video is encoded as H.264 (libx264) at 1 frame per second, with AAC 192 kbps audio and the `faststart` flag. In 1080p and 720p modes, covers that are not 16:9 are scaled down and padded with black bars; original-size mode keeps the source dimensions, rounded down to even numbers. SRT, VTT, and TXT subtitle files are always written as sidecar files. When burn-in is on, the same SRT is also rendered into the frames, so one run can produce both a hard-subtitle MP4 and the sidecar files. Burn-in adds no processing step, so the progress bar is unchanged.
 
 ## Subtitle formats
 
@@ -113,6 +115,10 @@ VTT output is deliberately plain: no `STYLE` blocks, no `NOTE` comments, no cue 
 
 VTT is unchecked by default. It shares the recognition-model switch with SRT and TXT, so it is greyed out when the model is set to Off, and its state is written to the configuration file.
 
+**Sidecar vs. burned-in subtitles.** SRT, VTT, and TXT are sidecar files: the player or platform reads them separately and viewers can switch them on and off. Burned-in subtitles ("hard subs") are painted into the picture by FFmpeg's `subtitles` filter (libass) and cannot be turned off. Use sidecar files for Bilibili and YouTube uploads, where captions are stored separately and can carry multiple languages; use burned-in subtitles for WeChat and Douyin, where the player has no caption track and the text must be visible in the picture itself. Checking burn-in does not stop the sidecar files from being written.
+
+Burn-in reuses the SRT file when SRT is checked. If only VTT and/or TXT is selected, the app generates a temporary SRT for rendering and does not leave it in the output folder. The font size is about 3% of the output height (clamped to 16–48), the margin about 4% (clamped to 10–80), with a 2 px outline and no shadow. Chinese fonts are probed in the order `Microsoft YaHei` → `Noto Sans CJK SC`; if neither exists, libass picks a fallback and the log warns that glyphs may be missing. Chinese and space-containing paths on Windows work normally (the implementation uses a temporary ASCII directory and a relative filter path to avoid escaping problems).
+
 ## Interface language
 
 The interface ships in Simplified Chinese, Traditional Chinese, and English. Use the selector in the top-right corner; the change applies immediately and does not restart the app. The first launch starts in Simplified Chinese, and the selection is remembered. Log lines that have already been written keep the language they were printed in and are not retranslated.
@@ -122,8 +128,11 @@ The interface ships in Simplified Chinese, Traditional Chinese, and English. Use
 - Windows 10 or 11
 - Python 3.10 or newer
 - FFmpeg with the `libx264` and `aac` encoders
+- Optional: an FFmpeg build with `libass`, needed only for burned-in subtitles
 
 FFmpeg is not bundled with the application and must be installed separately.
+
+`libx264` and `aac` are required: a build that lacks either one is rejected. `libass` is optional: without it every other feature works normally, only burn-in is unavailable, and the startup log says "subtitle burn-in is unavailable, everything else works normally". To check your own build, run `ffmpeg -filters` and look for the `subtitles` filter (a line such as `.. subtitles  V->V  Render text...`).
 
 ## Installation
 
@@ -159,7 +168,7 @@ This adds `sherpa-onnx` for strong GTCRN noise reduction and `imageio-ffmpeg` as
 winget install Gyan.FFmpeg
 ```
 
-The application searches, in order: the last path saved in the configuration, `ffmpeg.exe` next to the program, `PATH`, winget package directories, common installation paths, and `imageio-ffmpeg`. You can also click **Change** at the top of the window to select `ffmpeg.exe` manually. A build is accepted only if it provides both `libx264` and `aac`; otherwise the application reports which encoder is missing. Installing `imageio-ffmpeg` with pip adds one more fallback source.
+The application searches, in order: the last path saved in the configuration, `ffmpeg.exe` next to the program, `PATH`, winget package directories, common installation paths, and `imageio-ffmpeg`. You can also click **Change** at the top of the window to select `ffmpeg.exe` manually. A build is accepted only if it provides both `libx264` and `aac`; otherwise the application reports which encoder is missing. libass is not part of that check: a build without it still runs, but burn-in stays greyed out. To confirm libass support, check that `ffmpeg -filters` lists `subtitles`. Installing `imageio-ffmpeg` with pip adds one more fallback source.
 
 ## Data and cache
 
@@ -178,6 +187,12 @@ Settings added in 5.2.0:
 | `asr_vad_mode` | `standard` (default) or `long`, the state of "Long sentences first" |
 | `loudnorm_enabled` | `true` (default) or `false`, the state of "Loudness normalization" |
 | `arnndn_mix` | RNNoise blend ratio, `0.8` by default, valid range 0.0–1.0; configuration file only |
+
+Settings added in 5.3.0:
+
+| Key | Meaning |
+| --- | --- |
+| `burn_subtitles` | `false` (default) or `true`, the state of "Burn subtitles into the picture" |
 
 The first run with a given recognition model downloads its weights into `models\whisper\`:
 
@@ -221,12 +236,13 @@ Tests that invoke a real FFmpeg binary are marked `integration` and can be skipp
 1. **Strong noise reduction loses high frequencies.** GTCRN works on 16 kHz audio, and the result is upsampled to 48 kHz. High-frequency detail is genuinely lost and the output can sound dull. Use Light RNNoise when fidelity matters, and Strong GTCRN when noise removal matters more.
 2. **Cancellation is not instantaneous.** FFmpeg-based steps such as noise reduction and muxing stop immediately, but Whisper inference is a blocking call, so cancellation waits for the current segment to finish.
 3. **The first transcription is slow.** It includes downloading the model and can take minutes to tens of minutes depending on the network and model size.
-4. **Subtitles are sidecar files.** They are not burned into the video picture.
+4. **Subtitles are sidecar files by default.** Burn-in is opt-in, requires a cover MP4 output and FFmpeg with libass, and applies only to audio input. When burn-in is off, subtitles are never rendered into the picture.
 5. **Video input keeps no picture.** A video is only an audio source: its frames are never kept, remuxed, or re-encoded. The two cover MP4 options are therefore skipped for video files: they stay greyed out, do not run even if they were checked, and need no cover image; the checked state is kept for the next audio file. A video with no subtitle format and no noise reduction has nothing left to do, so the app asks for at least one of them.
 6. **Only the first audio track is used.** Multi-track videos, such as dual-language releases, cannot pick a track; the second and later tracks are ignored.
 7. **A silent video cannot be processed.** A video without an audio track stops with a readable message instead of FFmpeg stderr.
 8. **Log history is not retranslated.** Switching the interface language leaves existing log lines in their original language.
 9. **Hallucination filtering is only partial.** It is based on text pattern matching and only drops segments of 3 seconds or more whose text matches a known pattern; a hallucination that does not match any pattern is kept. Word-level timestamps stay off, because faster-whisper's `hallucination_silence_threshold` requires them and enabling them would slow recognition noticeably.
+10. **Font size on original-size output uses a 1080-height baseline.** The burn-in style is computed from the output height, so a 4K source gets slightly smaller text and a tiny image gets slightly larger text. Both stay within the 16–48 range, so the text is never unreadable.
 
 ## License
 

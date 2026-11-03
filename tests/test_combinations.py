@@ -268,6 +268,74 @@ def test_flow_video_a_only_denoises(ffmpeg_path, sine_video, denoise_model, tmp_
     assert names == {f"{stem}_denoised.wav"}
 
 
+# ==================== 烧录维度（在 14 格矩阵上增加 D = 硬字幕）====================
+BURN_COMBOS = {
+    # B + C + D：有字幕、有 MP4 → 烧录生效
+    "BCD": dict(model_code="tiny", denoise_code="off", srt=True,
+                mux_original=True, burn_subtitles=True),
+    # B + D：只有字幕没有 MP4 → 烧录被掩码
+    "BD": dict(model_code="tiny", denoise_code="off", srt=True,
+               burn_subtitles=True),
+}
+BURN_EXPECTED_AUDIO = {"BCD": True, "BD": False}
+BURN_EXPECTED_VIDEO = {"BCD": False, "BD": False}
+BURN_CASES = [(has_video, name) for has_video in (False, True)
+              for name in BURN_COMBOS]
+BURN_IDS = [f"{'video' if has_video else 'audio'}-{name}"
+            for has_video, name in BURN_CASES]
+
+
+def _burn_flags(has_video, combo):
+    opts = BURN_COMBOS[combo]
+    return option_flags(
+        opts["model_code"], opts["denoise_code"], opts["srt"], False,
+        opts.get("mux_original", False), False, False, opts["burn_subtitles"],
+        has_video=has_video,
+    )
+
+
+def _burn_plan(has_video, combo):
+    opts = BURN_COMBOS[combo]
+    return build_plan(
+        model_code=opts["model_code"], denoise_code=opts["denoise_code"],
+        srt=opts["srt"], mux_original=opts.get("mux_original", False),
+        burn_subtitles=opts["burn_subtitles"], has_video=has_video,
+        **PLAN_BASE,
+    )
+
+
+@pytest.mark.parametrize("has_video,combo", BURN_CASES, ids=BURN_IDS)
+def test_burn_matrix(has_video, combo):
+    expected = (BURN_EXPECTED_VIDEO if has_video else BURN_EXPECTED_AUDIO)[combo]
+    assert _burn_flags(has_video, combo)["burn_subtitles"] is expected
+    assert _burn_plan(has_video, combo).burn_subtitles is expected
+
+
+@pytest.mark.parametrize("has_video,combo", CASES, ids=CASE_IDS)
+def test_burn_is_off_by_default_in_existing_grid(has_video, combo):
+    """新增维度不得改变原 14 格的任何结果：默认 burn=False。"""
+    assert _plan(has_video, combo).burn_subtitles is False
+
+
+def test_burn_param_sits_before_has_video():
+    """`burn_subtitles` 插在 `has_video` 之前，保持 has_video 仍是最后一个参数。"""
+    for func in (option_flags, build_plan):
+        names = list(inspect.signature(func).parameters)
+        assert names.index("burn_subtitles") < names.index("has_video")
+
+
+def test_burn_allowed_helper_is_shared_source_of_truth():
+    """掩码单点定义：`burn_allowed()` 与 `option_flags()` 结果一致。"""
+    from mp3tom4.pipeline import burn_allowed
+
+    assert burn_allowed(True, True, True, False, False) is True
+    assert burn_allowed(True, True, False, True, False) is True
+    assert burn_allowed(True, True, False, False, False) is False
+    assert burn_allowed(True, False, True, False, False) is False
+    assert burn_allowed(True, True, True, False, True) is False
+    assert burn_allowed(False, True, True, False, False) is False
+
+
 @pytest.mark.integration
 def test_flow_video_ab_denoise_and_subtitle(monkeypatch, ffmpeg_path, sine_video,
                                             denoise_model, tmp_path):
