@@ -39,12 +39,16 @@
   "label.unknown_error": "Unknown error",
   "label.basename": "{name}",
   "label.path": "{path}",
+  "label.initial_prompt": "Terms / prompt (optional)",
+  "ph.initial_prompt": "Names, companies, jargon — comma separated",
 
   "chk.srt": "SRT",
   "chk.txt": "TXT",
   "chk.vtt": "VTT",
   "chk.mux_original": "MP4 · Original Audio",
   "chk.mux_denoised": "MP4 · Denoised Audio",
+  "chk.vad_long": "Prefer long sentences (less splitting)",
+  "chk.loudnorm": "Loudness normalization (-16 LUFS)",
 
   "engine.prefix": "⚙ FFmpeg Engine: ",
   "engine.detecting": "Detecting...",
@@ -125,6 +129,7 @@
   "log.start": ">>> 🚀 Processing {count} file(s).\n\n",
   "log.cancel_request": ">>> 🛑 Cancel requested, stopping the current task...\n",
   "log.config_fallback": ">>> ⚠ Unrecognized value \"{raw}\" for setting \"{name}\", falling back to {value}.\n",
+  "log.prompt_truncated": ">>> ⚠ Terms / prompt exceeds {limit} characters; the excess was truncated.\n",
 
   "log.file_start": "[{index}/{total}] {name}\n",
   "log.duration_unknown": "  ⚠ Could not read the duration; the progress bar may be inaccurate (output is unaffected).\n",
@@ -137,6 +142,7 @@
   "log.asr_empty": "  ⚠ No speech detected, no subtitles written.\n",
   "log.asr_done": "  ✅ Subtitles written: {count} segments · language {lang} ({prob:.0%}) · {elapsed:.0f}s\n     → {files}\n",
   "log.asr_failed": "  ❌ Speech recognition failed: {exc}\n",
+  "log.asr_hallucination_dropped": "  🧽 Filtered {count} likely hallucination segment(s).\n",
   "log.vtt_saved": "  ✅ VTT subtitles: {name}\n",
   "log.mux_start": "  🎬 Muxing video: {name}\n",
   "log.mux_cancelled": "  🛑 Cancelled; removing the incomplete output.\n",
@@ -161,6 +167,7 @@
   "log.gtcrn_upsample_note": "    ℹ Strong noise reduction works on 16 kHz mono audio and upsamples to 48 kHz, so some high frequencies are lost.\n",
   "log.gtcrn_process_fallback": "    ⚠ GTCRN failed; falling back to RNNoise.\n",
   "log.rnnoise_missing": "    ⚠ The RNNoise model is unavailable; applying high-pass filtering only.\n",
+  "log.afftdn_fallback": "    ⚠ RNNoise model unavailable; falling back to spectral denoising (afftdn).\n",
 
   "log.model_downloading": "    ⏬ Downloading the model weights on first use (large file, please wait)…\n",
   "log.model_mirror_hint": "       If it is slow, set HF_ENDPOINT=https://hf-mirror.com and retry.\n",
@@ -173,6 +180,8 @@
 
   "model.rnnoise": "RNNoise model",
   "model.gtcrn": "GTCRN model",
+
+  "asr.hallucination_patterns": "谢谢观看|字幕由|中文字幕|请不吝点赞|感谢观看|订阅频道|Thanks for watching|Subtitles by|Amara.org",
 
   "opt.size.1080p": "1080p (1920x1080)",
   "opt.size.720p": "720p (1280x720)",

@@ -15,11 +15,13 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 from ..asr import whisper_model_ready
 from ..config import (
     APP_VERSION,
+    ASR_PROMPT_MAX_CHARS,
     AUDIO_EXTS,
     DEFAULT_DENOISE,
     DEFAULT_MODE,
     DEFAULT_STT_LANG,
     DEFAULT_STT_MODEL,
+    DEFAULT_VAD_MODE,
     DENOISE_OPTIONS,
     IMAGE_EXTS,
     INPUT_EXTS,
@@ -77,8 +79,8 @@ class AudioToVideoApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         # 三组选项比原两组多占一行分组框，高度相应上调；日志区仍保持 height=10
-        self.root.geometry("980x1000")
-        self.root.minsize(960, 950)
+        self.root.geometry("980x1050")
+        self.root.minsize(960, 1000)
         self.root.configure(bg="#1E1E1E")
 
         self.cfg = load_config()
@@ -148,6 +150,19 @@ class AudioToVideoApp:
         self.vtt_var = tk.BooleanVar(value=bool(self.cfg.get("vtt_enabled", False)))
         self.mux_original_var = tk.BooleanVar(value=bool(self.cfg.get("mux_original", False)))
         self.mux_denoised_var = tk.BooleanVar(value=bool(self.cfg.get("mux_denoised", False)))
+
+        # 识别质量控制：术语提示词 / 长句优先；成片响度标准化默认开启
+        saved_prompt = str(self.cfg.get("asr_initial_prompt", "") or "")
+        self.prompt_var = tk.StringVar(value=self._clean_prompt(saved_prompt))
+        if len(saved_prompt.strip()) > ASR_PROMPT_MAX_CHARS:
+            self._startup_warnings.append(
+                t("log.prompt_truncated", limit=ASR_PROMPT_MAX_CHARS))
+        self.vad_long_var = tk.BooleanVar(
+            value=self.cfg.get("asr_vad_mode") == "long")
+        self.loudnorm_var = tk.BooleanVar(
+            value=bool(self.cfg.get("loudnorm_enabled", True)))
+        self._prompt_notice_shown = False
+        self.prompt_var.trace_add("write", self._on_prompt_changed)
 
         self.setup_ui()
         self._restore_saved_selection()
@@ -240,6 +255,35 @@ class AudioToVideoApp:
         value_var.set(value)
         self._on_option_change()
 
+    def _clean_prompt(self, value) -> str:
+        """术语提示词统一裁剪：去首尾空白并截断到 token 上限对应的字符数。"""
+        return str(value or "").strip()[:ASR_PROMPT_MAX_CHARS]
+
+    def _prompt_value(self) -> str:
+        return self._clean_prompt(self.prompt_var.get())
+
+    def _on_prompt_changed(self, *_args):
+        """输入过程中即时截断，并在首次超限时给出一条明确提示。"""
+        text = self.prompt_var.get()
+        if len(text) > ASR_PROMPT_MAX_CHARS:
+            self.prompt_var.set(text[:ASR_PROMPT_MAX_CHARS])
+            if not self._prompt_notice_shown:
+                self._prompt_notice_shown = True
+                self.log(t("log.prompt_truncated", limit=ASR_PROMPT_MAX_CHARS))
+            return
+        if len(text) < ASR_PROMPT_MAX_CHARS:
+            self._prompt_notice_shown = False
+        self._sync_prompt_hint()
+
+    def _sync_prompt_hint(self):
+        """输入框为空时显示占位提示，有内容时隐藏，保持单行布局稳定。"""
+        if not hasattr(self, "lbl_prompt_hint"):
+            return
+        if self.prompt_var.get().strip():
+            self.lbl_prompt_hint.pack_forget()
+        else:
+            self.lbl_prompt_hint.pack(side="left", padx=8)
+
     def _persist(self):
         self.cfg.update({
             "ffmpeg_path": self.ffmpeg_path,
@@ -259,6 +303,9 @@ class AudioToVideoApp:
             "vtt_enabled": bool(self.vtt_var.get()),
             "mux_original": bool(self.mux_original_var.get()),
             "mux_denoised": bool(self.mux_denoised_var.get()),
+            "asr_initial_prompt": self._prompt_value(),
+            "asr_vad_mode": "long" if self.vad_long_var.get() else DEFAULT_VAD_MODE,
+            "loudnorm_enabled": bool(self.loudnorm_var.get()),
         })
         # 旧键已完成迁移，不再写回，避免与 srt/txt 两份开关冲突
         self.cfg.pop("stt_enabled", None)
@@ -367,11 +414,15 @@ class AudioToVideoApp:
             self.chk_srt.config(state=tk.NORMAL)
             self.chk_txt.config(state=tk.NORMAL)
             self.chk_vtt.config(state=tk.NORMAL)
+            self.ent_prompt.config(state=tk.NORMAL)
+            self.chk_vad_long.config(state=tk.NORMAL)
         else:
             self.cmb_lang.config(state=tk.DISABLED)
             self.chk_srt.config(state=tk.DISABLED)
             self.chk_txt.config(state=tk.DISABLED)
             self.chk_vtt.config(state=tk.DISABLED)
+            self.ent_prompt.config(state=tk.DISABLED)
+            self.chk_vad_long.config(state=tk.DISABLED)
 
         # 降噪 = 关闭 → 降噪 MP4 置灰，并**自动取消勾选**（否则会被静默跳过）。
         # 反向不自动恢复勾选：重新开启降噪后由用户重新决定。
@@ -393,11 +444,13 @@ class AudioToVideoApp:
         if has_video:
             self.chk_mux_original.config(state=tk.DISABLED)
             self.chk_mux_denoised.config(state=tk.DISABLED)
+            self.chk_loudnorm.config(state=tk.DISABLED)
         else:
             # 切回纯音频输入时恢复：原声 MP4 恒可用，降噪 MP4 仍需跟随降噪开关
             self.chk_mux_original.config(state=tk.NORMAL)
             self.chk_mux_denoised.config(
                 state=tk.NORMAL if flags["denoise_on"] else tk.DISABLED)
+            self.chk_loudnorm.config(state=tk.NORMAL)
 
         # 封面按钮：没有视频输出时灰色但仍可点击，方便提前准备素材
         if flags["mux_original"] or flags["mux_denoised"]:
@@ -466,10 +519,10 @@ class AudioToVideoApp:
     def _row(parent):
         return widgets.row(parent)
 
-    def _caption(self, parent, key):
+    def _caption(self, parent, key, width=9):
         var = tk.StringVar()
         self.set_text(var, key)
-        return widgets.caption(parent, textvariable=var)
+        return widgets.caption(parent, textvariable=var, width=width)
 
     def _check(self, parent, key, variable):
         var = tk.StringVar()
@@ -554,6 +607,24 @@ class AudioToVideoApp:
         self.chk_vtt = self._check(row, "chk.vtt", self.vtt_var)
         self.chk_vtt.pack(side="left", padx=(16, 0))
 
+        # 术语 / 提示词：单行输入，空值时在右侧显示灰色占位提示
+        row = self._row(grp_b)
+        self._caption(row, "label.initial_prompt", width=17).pack(side="left")
+        self.ent_prompt = tk.Entry(
+            row, textvariable=self.prompt_var, font=("Microsoft YaHei", 9),
+            bg="#3C3C3C", fg="white", insertbackground="white", relief="flat",
+            width=42, disabledbackground="#2D2D30", disabledforeground="#777777")
+        self.ent_prompt.pack(side="left")
+        self.ent_prompt.bind("<FocusOut>", lambda _event: self._persist())
+        self.lbl_prompt_hint = tk.Label(
+            row, textvariable=self._var_for("ph.initial_prompt"), bg="#252526",
+            fg="#777777", font=("Microsoft YaHei", 8))
+        self._sync_prompt_hint()
+
+        row = self._row(grp_b)
+        self.chk_vad_long = self._check(row, "chk.vad_long", self.vad_long_var)
+        self.chk_vad_long.pack(side="left")
+
         # --- 选项 C · 视频生成 ---
         grp_c = self._group("group.options_c")
         row = self._row(grp_c)
@@ -565,6 +636,10 @@ class AudioToVideoApp:
         self.chk_mux_denoised = self._check(
             row, "chk.mux_denoised", self.mux_denoised_var)
         self.chk_mux_denoised.pack(side="left")
+
+        row = self._row(grp_c)
+        self.chk_loudnorm = self._check(row, "chk.loudnorm", self.loudnorm_var)
+        self.chk_loudnorm.pack(side="left")
 
         row = self._row(grp_c)
         self._caption(row, "label.cover").pack(side="left")
@@ -809,10 +884,11 @@ class AudioToVideoApp:
         self._busy = locked
         state = tk.DISABLED if locked else tk.NORMAL
         for widget in (self.btn_audio, self.btn_img, self.btn_dir,
-                       self.btn_engine, self.btn_redetect):
+                       self.btn_engine, self.btn_redetect, self.ent_prompt):
             widget.config(state=state)
         for widget in (self.chk_srt, self.chk_txt, self.chk_vtt,
-                       self.chk_mux_original, self.chk_mux_denoised):
+                       self.chk_mux_original, self.chk_mux_denoised,
+                       self.chk_vad_long, self.chk_loudnorm):
             widget.config(state=state)
         combo_state = tk.DISABLED if locked else "readonly"
         for widget in (self.cmb_model, self.cmb_lang, self.cmb_denoise, self.cmb_size):
@@ -847,6 +923,9 @@ class AudioToVideoApp:
             ffmpeg_path=self.ffmpeg_path,
             vtt=bool(self.vtt_var.get()),
             has_video=self._has_video_input(),
+            initial_prompt=self._prompt_value(),
+            vad_mode="long" if self.vad_long_var.get() else DEFAULT_VAD_MODE,
+            loudnorm_enabled=bool(self.loudnorm_var.get()),
         )
 
     def start_processing(self):
@@ -866,6 +945,8 @@ class AudioToVideoApp:
             self._show_selection(self.dir_var, self.lbl_dir, self.output_dir)
             self.log(t("log.output_fallback", dir=self.output_dir))
 
+        # 输入框没有「变更即落盘」的 command，开始执行前统一保存一次
+        self._persist()
         plan = self._build_plan()
         if plan.need_stt and not module_available("faster_whisper"):
             messagebox.showerror(

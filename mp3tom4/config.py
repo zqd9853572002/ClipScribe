@@ -20,7 +20,7 @@ from pathlib import Path
 from .i18n import t, text_for
 
 APP_NAME = "Mp3ToMp4"
-APP_VERSION = "5.1.1"
+APP_VERSION = "5.2.0"
 
 # 项目根目录（原单文件脚本所在目录）：用于探测随程序放置的 ffmpeg.exe。
 # 原代码用 `Path(__file__).resolve().parent`，模块化后本文件位于 <根>/mp3tom4/，
@@ -85,6 +85,36 @@ DEFAULT_STT_MODEL = "large-v3-turbo"
 DEFAULT_STT_LANG = "auto"
 DEFAULT_DENOISE = "arnndn"
 
+# ---------- 识别质量控制 ----------
+# Whisper 的 prompt 受 token 上限约束，过长既无收益也会拖慢编码，故在 UI 与调用层
+# 同时截断（UI 负责提示，这里兜住程序化调用）。
+ASR_PROMPT_MAX_CHARS = 800
+
+# VAD 模式 → faster-whisper `vad_parameters` 的映射。
+# 注意：faster-whisper 1.2.1 的 VadOptions 字段名是 `threshold`（不是
+# `vad_threshold`），传错键会直接抛 TypeError，因此这里以源码为准。
+DEFAULT_VAD_MODE = "standard"
+VAD_MODES = ("standard", "long")
+VAD_PARAMETERS = {
+    # standard 必须与 5.1.1 的实际行为逐字一致
+    "standard": {"min_silence_duration_ms": 400, "speech_pad_ms": 200},
+    # long：更长静音容忍 + 更大补边 + 更敏感的语音判定，减少长句被切碎
+    "long": {"min_silence_duration_ms": 700, "speech_pad_ms": 300, "threshold": 0.4},
+}
+
+# 幻听后处理：仅对「时长 ≥ 阈值 且 文本命中模式」的片段生效，避免误删正常短句。
+# 模式表必须放词条文件：`mp3tom4/` 下的 Python 源码禁止出现中文字面量（有测试守卫）。
+HALLUCINATION_MIN_DURATION_S = 3.0
+HALLUCINATION_PATTERN_KEY = "asr.hallucination_patterns"
+
+# ---------- FFmpeg 滤镜常量 ----------
+# RNNoise 不可用时的兜底：频谱降噪，纯 FFmpeg 内置滤镜，零依赖。
+AFFTDN_FALLBACK_FILTER = "afftdn=nf=-25:tn=1"
+# 成片响度标准化（单遍）。不得用于 ASR 预处理链，否则会干扰识别。
+LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
+# arnndn 的干湿比；仅在模型可用时生效（1.0 = 纯降噪输出）。
+DEFAULT_ARNNDN_MIX = 0.8
+
 
 def option_values(options):
     """选项表的全部内部值（按显示顺序）。"""
@@ -131,6 +161,26 @@ def option_label(options, value, default_value=None):
         if val == fallback:
             return _render_label(label)
     return _render_label(options[0][1])
+
+
+def vad_parameters(mode) -> dict:
+    """VAD 模式 → 传给 faster-whisper 的参数副本；未知模式回退 standard。"""
+    return dict(VAD_PARAMETERS.get(mode) or VAD_PARAMETERS[DEFAULT_VAD_MODE])
+
+
+def clamp_arnndn_mix(value, default: float = DEFAULT_ARNNDN_MIX) -> float:
+    """把配置里的 mix 夹到 0.0–1.0；无法解析时用默认值。"""
+    try:
+        mix = float(value)
+    except (TypeError, ValueError):
+        mix = float(default)
+    return max(0.0, min(1.0, mix))
+
+
+def hallucination_patterns():
+    """已知幻听模式（当前语言词条，已小写化）。"""
+    raw = t(HALLUCINATION_PATTERN_KEY)
+    return [item.strip().lower() for item in raw.split("|") if item.strip()]
 
 
 def resolve_option(options, raw, default):

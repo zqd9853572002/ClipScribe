@@ -150,6 +150,77 @@ def test_plan_keeps_ffmpeg_path():
     assert make_plan(ffmpeg_path="/x/ffmpeg.exe").ffmpeg_path == "/x/ffmpeg.exe"
 
 
+def test_plan_quality_fields_defaults_preserve_old_behavior():
+    """旧调用方不传新参数时：无提示词、standard VAD、响度标准化默认开。"""
+    plan = make_plan(srt=True)
+    assert plan.initial_prompt == ""
+    assert plan.vad_mode == "standard"
+    assert plan.loudnorm_enabled is True
+
+
+def test_plan_passes_quality_fields():
+    plan = make_plan(srt=True, initial_prompt="  Acme, 张伟  ",
+                     vad_mode="long", loudnorm_enabled=False)
+    assert plan.initial_prompt == "Acme, 张伟"
+    assert plan.vad_mode == "long"
+    assert plan.loudnorm_enabled is False
+
+
+def test_plan_rejects_unknown_vad_mode():
+    assert make_plan(vad_mode="不存在的模式").vad_mode == "standard"
+
+
+def test_do_stt_forwards_prompt_and_vad(monkeypatch, tmp_path):
+    """非默认的识别质量控制参数必须传到 transcribe_audio。"""
+    captured = {}
+
+    def fake_prepare(ffmpeg, src, mode, workdir, log=None):
+        return "input.wav"
+
+    def fake_transcribe(audio_path, model_name, language, duration,
+                        on_progress, should_stop, log=None, **kwargs):
+        captured.update(kwargs)
+        return [{"start": 0.0, "end": 1.0, "text": "hello"}], SimpleNamespace(
+            language="en", language_probability=0.9)
+
+    monkeypatch.setattr(pipeline_mod, "prepare_asr_audio", fake_prepare)
+    monkeypatch.setattr(pipeline_mod, "transcribe_audio", fake_transcribe)
+
+    plan = make_plan(srt=True, initial_prompt="Acme", vad_mode="long")
+    plan.output_dir = str(tmp_path)
+    Pipeline(plan)._do_stt("/tmp/a.mp3", "stem", 1.0, 0.0, 100.0,
+                           denoise_mode="off", already_denoised=False)
+
+    assert captured["initial_prompt"] == "Acme"
+    assert captured["vad_mode"] == "long"
+
+
+def test_do_stt_filters_hallucination_segments(monkeypatch, tmp_path):
+    """超长 + 命中幻听模式的片段不得写进字幕，正常短句保留。"""
+
+    def fake_prepare(ffmpeg, src, mode, workdir, log=None):
+        return "input.wav"
+
+    def fake_transcribe(audio_path, model_name, language, duration,
+                        on_progress, should_stop, log=None, **kwargs):
+        return [
+            {"start": 10.0, "end": 14.0, "text": "谢谢观看"},
+            {"start": 14.0, "end": 15.0, "text": "真正的内容"},
+        ], SimpleNamespace(language="zh", language_probability=0.9)
+
+    monkeypatch.setattr(pipeline_mod, "prepare_asr_audio", fake_prepare)
+    monkeypatch.setattr(pipeline_mod, "transcribe_audio", fake_transcribe)
+
+    plan = make_plan(srt=True)
+    plan.output_dir = str(tmp_path)
+    Pipeline(plan)._do_stt("/tmp/a.mp3", "stem", 20.0, 0.0, 100.0,
+                           denoise_mode="off", already_denoised=False)
+
+    content = (tmp_path / "stem.srt").read_text(encoding="utf-8")
+    assert "真正的内容" in content
+    assert "谢谢观看" not in content
+
+
 def test_do_stt_uses_denoise_mode_from_plan(monkeypatch):
     """识别前的降噪模式必须来自任务计划，而不是硬编码的 "off"。"""
     captured = {}

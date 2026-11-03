@@ -10,9 +10,13 @@ import tempfile
 from pathlib import Path
 
 from .config import (
+    AFFTDN_FALLBACK_FILTER,
+    DEFAULT_ARNNDN_MIX,
     GTCRN_URL,
     RNNOISE_URL,
+    clamp_arnndn_mix,
     download_file,
+    load_config,
     models_root,
     module_available,
     remove_file_quiet,
@@ -44,6 +48,33 @@ def ensure_denoise_model(mode: str, log=None) -> str:
         return str(dest) if download_file(
             GTCRN_URL, dest, log, t("model.gtcrn")) else ""
     return ""
+
+
+def configured_arnndn_mix() -> float:
+    """读取配置项 `arnndn_mix`（未配置时用默认 0.8，并夹到 0.0–1.0）。"""
+    return clamp_arnndn_mix(
+        load_config().get("arnndn_mix", DEFAULT_ARNNDN_MIX))
+
+
+def build_denoise_chain(model_path: str, out_rate: int, mix=None) -> str:
+    """构造降噪滤镜链。
+
+    有 RNNoise 模型时走 `arnndn`（可用 mix 调节干湿比，`None` 表示读配置）；
+    模型缺失时降级为 `highpass + afftdn` 频谱降噪，而不是只剩一个高通滤波器。
+    `afftdn` 是 FFmpeg 内置滤镜，无需下载也无需检测可用性。
+    """
+    chain = "highpass=f=80"
+    if model_path:
+        chain += ",aresample=48000,arnndn=m='" + filter_escape_path(model_path) + "'"
+        mix_value = clamp_arnndn_mix(
+            configured_arnndn_mix() if mix is None else mix)
+        # mix=1.0 是 ffmpeg 默认值，省略可让滤镜串与旧版本逐字一致
+        if mix_value != 1.0:
+            chain += f":mix={mix_value:g}"
+    else:
+        chain += "," + AFFTDN_FALLBACK_FILTER
+    chain += f",aresample={int(out_rate)}"
+    return chain
 
 
 def _missing_audio_stream(detail: str) -> bool:
@@ -158,15 +189,9 @@ def prepare_asr_audio(ffmpeg: str, src: str, mode: str, workdir: str, log=None) 
 
     if mode == "arnndn":
         model_path = ensure_denoise_model("arnndn", log)
-        chain = "highpass=f=80"
-        if model_path:
-            chain += (
-                ",aresample=48000,arnndn=m='"
-                + filter_escape_path(model_path)
-                + "',aresample=16000"
-            )
-        else:
-            chain += ",aresample=16000"
+        if not model_path and log:
+            log(t("log.afftdn_fallback"), True)
+        chain = build_denoise_chain(model_path, 16000)
         ok, err = decode_to_wav(ffmpeg, src, out_wav, chain)
         if not ok:
             if log:
@@ -280,12 +305,9 @@ def render_denoised_audio(ffmpeg, src, out_wav, mode, should_stop, log,
 
     # 轻度：RNNoise，滤镜链保留 48kHz（末尾不再 aresample 到 16k）
     model_path = ensure_denoise_model("arnndn", log)
-    chain = "highpass=f=80"
-    if model_path:
-        chain += ",aresample=48000,arnndn=m='" + filter_escape_path(model_path) + "'"
-    elif log:
-        log(t("log.rnnoise_missing"), True)
-    chain += ",aresample=48000"
+    if not model_path and log:
+        log(t("log.afftdn_fallback"), True)
+    chain = build_denoise_chain(model_path, 48000)
 
     cmd = [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", src,

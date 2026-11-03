@@ -39,12 +39,16 @@
   "label.unknown_error": "未知错误",
   "label.basename": "{name}",
   "label.path": "{path}",
+  "label.initial_prompt": "术语 / 提示词（可选）",
+  "ph.initial_prompt": "人名、公司名、专业术语，用逗号分隔",
 
   "chk.srt": "SRT",
   "chk.txt": "TXT",
   "chk.vtt": "VTT",
   "chk.mux_original": "原始音频配图 MP4",
   "chk.mux_denoised": "降噪音频配图 MP4",
+  "chk.vad_long": "长句优先（减少切碎）",
+  "chk.loudnorm": "响度标准化（-16 LUFS）",
 
   "engine.prefix": "⚙ FFmpeg 引擎：",
   "engine.detecting": "检测中...",
@@ -125,6 +129,7 @@
   "log.start": ">>> 🚀 开始处理，共 {count} 个文件。\n\n",
   "log.cancel_request": ">>> 🛑 已请求取消，正在停止当前任务...\n",
   "log.config_fallback": ">>> ⚠ 配置项「{name}」的值「{raw}」无法识别，已回退为 {value}。\n",
+  "log.prompt_truncated": ">>> ⚠ 术语 / 提示词超过 {limit} 字符，超出部分已截断。\n",
 
   "log.file_start": "[{index}/{total}] {name}\n",
   "log.duration_unknown": "  ⚠ 无法读取时长，进度条将不准确（不影响输出）。\n",
@@ -137,6 +142,7 @@
   "log.asr_empty": "  ⚠ 未识别到有效语音，未生成字幕。\n",
   "log.asr_done": "  ✅ 字幕已生成：{count} 条 · 语种 {lang} ({prob:.0%}) · 耗时 {elapsed:.0f}s\n     → {files}\n",
   "log.asr_failed": "  ❌ 语音识别失败：{exc}\n",
+  "log.asr_hallucination_dropped": "  🧽 已过滤 {count} 条疑似幻听字幕片段。\n",
   "log.vtt_saved": "  ✅ VTT 字幕：{name}\n",
   "log.mux_start": "  🎬 封装视频：{name}\n",
   "log.mux_cancelled": "  🛑 已取消，删除未完成的输出文件。\n",
@@ -161,6 +167,7 @@
   "log.gtcrn_upsample_note": "    ℹ 强力降噪按 16k 单声道处理后再上采样到 48kHz，高频会有损失。\n",
   "log.gtcrn_process_fallback": "    ⚠ GTCRN 处理失败，已自动回退 RNNoise。\n",
   "log.rnnoise_missing": "    ⚠ RNNoise 模型不可用，本次仅做高通滤波。\n",
+  "log.afftdn_fallback": "    ⚠ RNNoise 模型不可用，已降级为频谱降噪（afftdn）。\n",
 
   "log.model_downloading": "    ⏬ 首次使用该模型，正在下载权重（大文件，请耐心等待）…\n",
   "log.model_mirror_hint": "       如下载缓慢，可设置环境变量 HF_ENDPOINT=https://hf-mirror.com 后重试。\n",
@@ -173,6 +180,8 @@
 
   "model.rnnoise": "RNNoise 模型",
   "model.gtcrn": "GTCRN 模型",
+
+  "asr.hallucination_patterns": "谢谢观看|字幕由|中文字幕|请不吝点赞|感谢观看|订阅频道|Thanks for watching|Subtitles by|Amara.org",
 
   "opt.size.1080p": "1080p (1920x1080)",
   "opt.size.720p": "720p (1280x720)",

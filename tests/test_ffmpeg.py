@@ -65,6 +65,31 @@ def test_filter_escape_path():
     assert fm.filter_escape_path(r"C:\Users\user\bd.rnnn") == "C\\:/Users/user/bd.rnnn"
 
 
+def test_build_convert_cmd_with_loudnorm():
+    cmd = fm.build_convert_cmd("ffmpeg", "a.mp3", "c.png", "o.mp4", "720p",
+                               loudnorm=True)
+    assert "-af" in cmd
+    filter_expr = cmd[cmd.index("-af") + 1]
+    assert filter_expr == "loudnorm=I=-16:TP=-1.5:LRA=11"
+
+
+def test_build_convert_cmd_loudnorm_limits_duration():
+    """单遍 loudnorm 会缓冲，必须显式 -t 才能让循环封面按时结束。"""
+    cmd = fm.build_convert_cmd("ffmpeg", "a.mp3", "c.png", "o.mp4", "720p",
+                               loudnorm=True, duration=3.0)
+    assert "-t" in cmd
+    assert cmd[cmd.index("-t") + 1] == "3.000"
+
+
+def test_build_convert_cmd_without_loudnorm():
+    cmd = fm.build_convert_cmd("ffmpeg", "a.mp3", "c.png", "o.mp4", "720p",
+                               loudnorm=False)
+    assert "-af" not in cmd
+    assert not any("loudnorm" in part for part in cmd)
+    # 基础命令仍是「封面 + 音轨」的 1fps 静态图链路
+    assert "-vf" in cmd and "-c:v" in cmd and "libx264" in cmd
+
+
 @pytest.mark.integration
 def test_convert_one_produces_playable_mp4(ffmpeg_path, sine_audio, black_png, tmp_path):
     out_path = str(tmp_path / "out.mp4")

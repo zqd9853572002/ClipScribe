@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .config import PROJECT_ROOT, SIZE_TARGETS
+from .config import LOUDNORM_FILTER, PROJECT_ROOT, SIZE_TARGETS
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -145,19 +145,25 @@ def filter_escape_path(path: str) -> str:
     return path.replace("\\", "/").replace(":", "\\:")
 
 
-def convert_one(ffmpeg, audio_path, image_path, out_path, mode, duration, on_progress, should_stop,
-                on_proc=None):
-    """执行单个转换，返回 (returncode, stderr 文本)。
-
-    on_proc 为可选回调：子进程启动时回调 Popen 句柄、结束时回调 None，
-    让 GUI 的取消按钮可以直接 terminate 真正的 ffmpeg 进程。
-    """
+def build_convert_cmd(ffmpeg, audio_path, image_path, out_path, mode, loudnorm=False,
+                      duration=0.0):
+    """构造成片封装命令（纯函数，便于测试响度标准化开关）。"""
     cmd = [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
         "-loop", "1", "-framerate", "1", "-i", image_path,
         "-i", audio_path,
         "-map", "0:v:0", "-map", "1:a:0",
         "-vf", build_video_filter(mode),
+    ]
+    # 响度标准化只作用于成片音轨；调用方若传入的已是降噪 WAV，
+    # 这里自然形成「降噪链 → loudnorm」的顺序。
+    if loudnorm:
+        cmd += ["-af", LOUDNORM_FILTER]
+        # 单遍 loudnorm 会缓冲音频，配合无限循环封面时 -shortest 无法及时
+        # 结束（实测 ffmpeg 9.0.2 会产出 ~42 秒的空白），因此显式限定时长。
+        if duration > 0:
+            cmd += ["-t", f"{duration:.3f}"]
+    cmd += [
         "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-r", "1",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k",
@@ -165,6 +171,18 @@ def convert_one(ffmpeg, audio_path, image_path, out_path, mode, duration, on_pro
         "-progress", "pipe:1", "-nostats",
         out_path,
     ]
+    return cmd
+
+
+def convert_one(ffmpeg, audio_path, image_path, out_path, mode, duration, on_progress, should_stop,
+                on_proc=None, loudnorm=False):
+    """执行单个转换，返回 (returncode, stderr 文本)。
+
+    on_proc 为可选回调：子进程启动时回调 Popen 句柄、结束时回调 None，
+    让 GUI 的取消按钮可以直接 terminate 真正的 ffmpeg 进程。
+    """
+    cmd = build_convert_cmd(ffmpeg, audio_path, image_path, out_path, mode,
+                            loudnorm=loudnorm, duration=duration)
     err_file = tempfile.TemporaryFile(mode="w+b")
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=err_file,

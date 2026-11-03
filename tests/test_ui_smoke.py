@@ -12,6 +12,7 @@ tk = pytest.importorskip("tkinter")
 from mp3tom4 import i18n  # noqa: E402
 from mp3tom4.config import (  # noqa: E402
     APP_VERSION,
+    ASR_PROMPT_MAX_CHARS,
     DEFAULT_STT_MODEL,
     DENOISE_OPTIONS,
     SIZE_OPTIONS,
@@ -26,6 +27,7 @@ KEY_WIDGETS = [
     "cmb_denoise", "cmb_model", "cmb_lang",
     "chk_srt", "chk_txt", "chk_vtt",
     "chk_mux_original", "chk_mux_denoised",
+    "ent_prompt", "lbl_prompt_hint", "chk_vad_long", "chk_loudnorm",
     "btn_img", "lbl_img", "cmb_size",
     "btn_dir", "lbl_dir",
     "btn_start", "btn_cancel", "cmb_language",
@@ -33,6 +35,7 @@ KEY_WIDGETS = [
     "size_var", "progress_var", "stage_var", "stt_model_var", "stt_lang_var",
     "denoise_var", "srt_var", "txt_var", "vtt_var",
     "mux_original_var", "mux_denoised_var",
+    "prompt_var", "vad_long_var", "loudnorm_var",
     "lang_display_var", "groups",
 ]
 
@@ -705,3 +708,120 @@ def test_video_to_audio_restores_both_mux_checkboxes(app):
 
     gui.set_option(gui.cmb_denoise, "off")
     assert str(gui.chk_mux_denoised.cget("state")) == "disabled"
+
+
+# ==================== 识别质量控制 / 响度标准化 ====================
+def test_quality_controls_present_with_defaults(app):
+    """三个新控件落在正确分组，默认值与配置默认值一致。"""
+    _, gui = app
+
+    assert gui.ent_prompt.master.master is gui.groups["group.options_b"]
+    assert gui.chk_vad_long.master.master is gui.groups["group.options_b"]
+    assert gui.chk_loudnorm.master.master is gui.groups["group.options_c"]
+
+    assert gui.prompt_var.get() == ""
+    assert gui.vad_long_var.get() is False
+    assert gui.loudnorm_var.get() is True
+    assert gui.ent_prompt.cget("textvariable") == str(gui.prompt_var)
+    assert gui.chk_loudnorm.cget("text") == t("chk.loudnorm")
+
+
+def test_stt_off_greys_prompt_and_vad_checkbox(app):
+    """识别模型关闭时，术语输入框与长句优先一并置灰。"""
+    _, gui = app
+
+    gui.set_option(gui.cmb_model, "off")
+    assert str(gui.ent_prompt.cget("state")) == "disabled"
+    assert str(gui.chk_vad_long.cget("state")) == "disabled"
+
+    gui.set_option(gui.cmb_model, "tiny")
+    assert str(gui.ent_prompt.cget("state")) == "normal"
+    assert str(gui.chk_vad_long.cget("state")) == "normal"
+
+
+def test_video_input_greys_loudnorm(app):
+    """视频输入不产出配图 MP4，响度标准化随之置灰；切回音频恢复。"""
+    _, gui = app
+
+    gui.audio_files = ["C:/fake/clip.mp4"]
+    gui._sync_options()
+    assert str(gui.chk_loudnorm.cget("state")) == "disabled"
+
+    gui.audio_files = ["C:/fake/a.mp3"]
+    gui._sync_options()
+    assert str(gui.chk_loudnorm.cget("state")) == "normal"
+
+
+def test_prompt_is_truncated_and_persisted(monkeypatch):
+    """超过 800 字符自动截断，落盘值同样是截断后的长度。"""
+    root, gui, saved = _make_app(monkeypatch)
+    try:
+        gui.prompt_var.set("x" * (ASR_PROMPT_MAX_CHARS + 120))
+        assert len(gui.prompt_var.get()) == ASR_PROMPT_MAX_CHARS
+
+        gui._persist()
+        assert saved[-1]["asr_initial_prompt"] == "x" * ASR_PROMPT_MAX_CHARS
+    finally:
+        root.destroy()
+
+
+def test_quality_options_persist_internal_values(monkeypatch):
+    root, gui, saved = _make_app(monkeypatch)
+    try:
+        gui.prompt_var.set("Acme, 张伟")
+        gui.vad_long_var.set(True)
+        gui.loudnorm_var.set(False)
+        gui._persist()
+
+        last = saved[-1]
+        assert last["asr_initial_prompt"] == "Acme, 张伟"
+        assert last["asr_vad_mode"] == "long"
+        assert last["loudnorm_enabled"] is False
+    finally:
+        root.destroy()
+
+
+def test_quality_options_restored_from_config(monkeypatch):
+    cfg = {
+        "asr_initial_prompt": "Acme",
+        "asr_vad_mode": "long",
+        "loudnorm_enabled": False,
+    }
+    root, gui, _saved = _make_app(monkeypatch, cfg=cfg)
+    try:
+        assert gui.prompt_var.get() == "Acme"
+        assert gui.vad_long_var.get() is True
+        assert gui.loudnorm_var.get() is False
+    finally:
+        root.destroy()
+
+
+def test_quality_options_reach_job_plan(app):
+    _, gui = app
+    gui.audio_files = ["C:/fake/a.mp3"]
+    gui.output_dir = "C:/out"
+    gui.prompt_var.set("  Acme, 张伟  ")
+    gui.vad_long_var.set(True)
+    gui.loudnorm_var.set(False)
+
+    plan = gui._build_plan()
+
+    assert plan.initial_prompt == "Acme, 张伟"
+    assert plan.vad_mode == "long"
+    assert plan.loudnorm_enabled is False
+
+
+def test_quality_controls_lock_during_run(app):
+    _, gui = app
+    gui.audio_files = ["C:/fake/a.mp3"]
+    gui._sync_options()
+
+    gui.lock_ui(True)
+    assert str(gui.ent_prompt.cget("state")) == "disabled"
+    assert str(gui.chk_vad_long.cget("state")) == "disabled"
+    assert str(gui.chk_loudnorm.cget("state")) == "disabled"
+
+    gui.lock_ui(False)
+    assert str(gui.ent_prompt.cget("state")) == "normal"
+    assert str(gui.chk_vad_long.cget("state")) == "normal"
+    assert str(gui.chk_loudnorm.cget("state")) == "normal"

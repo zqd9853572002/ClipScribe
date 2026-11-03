@@ -37,9 +37,12 @@ Select one or more audio or video files, configure the three option groups below
 | B · Recognition and subtitles | Model | Off, tiny, base, small, medium, large-v3-turbo |
 | | Spoken language | Auto-detect / Chinese / English |
 | | Subtitle formats | SRT, VTT, and TXT, selected independently |
+| | Glossary / prompt | Optional single line, up to 800 characters, sent to Whisper as `initial_prompt` |
+| | Long sentences first | Off by default; looser VAD settings so long Chinese sentences are cut less often |
 | C · Video output | Video files | MP4 with the original audio and/or MP4 with the denoised audio |
 | | Cover image | JPG, PNG, BMP, WEBP |
 | | Resolution | 1080p (default) / 720p / original image size |
+| | Loudness normalization | `-16 LUFS`; on by default; applies to the finished MP4 only |
 
 - Noise reduction runs at most once per file; subtitles and the denoised video reuse that result. Whenever the noise-reduction group is not Off, `{name}_denoised.wav` is always written, even if no subtitle or video output uses it.
 - Any combination of the three groups can run: each group on its own, or A+B, A+C, B+C, and A+B+C. The only combination that cannot run is a video input with nothing checked except a cover MP4 option; the app then asks for at least one subtitle format or noise reduction.
@@ -49,8 +52,14 @@ Select one or more audio or video files, configure the three option groups below
 - Accepted audio formats are the ones FFmpeg can decode, including MP3, M4A, M4B, AAC, WAV, FLAC, OGG, OGA, OPUS, WMA, AIFF, APE, WV, AMR, AC3, and DTS.
 - Accepted video formats are MP4, WebM, MKV, MOV, and M4V. Only the first audio track is extracted (`-vn`, first audio stream) and converted to 16 kHz mono WAV before recognition, so a multi-track video cannot switch tracks.
 - A video with no audio track stops with a readable message ("The input has no usable audio track…") instead of raw FFmpeg stderr.
+- The glossary / prompt is handed to Whisper as `initial_prompt`. It mainly helps with names, company names, and domain jargon, and also steadies punctuation. Text longer than 800 characters is truncated, and the log says so.
+- Long sentences first switches the VAD settings from standard (`min_silence_duration_ms=400`, `speech_pad_ms=200`) to long (`700`, `300`, and `threshold=0.4`), so a long Chinese sentence is less likely to be split into pieces. It is off by default.
+- Loudness normalization appends `loudnorm=I=-16:TP=-1.5:LRA=11` to the audio chain of the finished MP4, keeping clips from different sources at a similar level. It is applied only to video output, never to the audio sent to recognition, and it is greyed out for video input, which produces no cover MP4.
+- Light noise reduction uses RNNoise. If the RNNoise model is unavailable (not downloaded, or the download failed), the chain falls back to `highpass=f=80,afftdn=nf=-25:tn=1`, FFmpeg's built-in spectral denoiser, which needs no download. The log says "falling back to spectral denoising (afftdn)", so a degraded run is visible instead of silently doing almost nothing.
+- `arnndn_mix` in `config.json` (default `0.8`, range 0.0–1.0) blends the denoised signal with the original: `1.0` is fully denoised, and lower values keep more of the original voice. There is no control for it in the window; edit the configuration file by hand.
+- Long silent stretches are less likely to produce hallucinated subtitle lines such as "thanks for watching", "subtitles by …", or "please like and subscribe": the recognition thresholds are stricter, and segments of 3 seconds or more whose text matches a known hallucination pattern are dropped, with the count written to the log. See [Known limitations](#known-limitations) for what this does not catch.
 
-Defaults: 1080p, large-v3-turbo, auto-detect, and light RNNoise.
+Defaults: 1080p, large-v3-turbo, auto-detect, light RNNoise, loudness normalization on, and long sentences first off.
 
 ## Common combinations
 
@@ -63,6 +72,11 @@ Defaults: 1080p, large-v3-turbo, auto-detect, and light RNNoise.
 | Everything | Check both MP4 options and at least one subtitle format, and set noise reduction to Light or Strong |
 
 Every combination of the three groups is valid, from any single group up to all three at once (A+B, A+C, B+C, and A+B+C). The only combination that does nothing is a video input with no subtitle format and no noise reduction.
+
+Two settings pay off quickly:
+
+- When a recording is full of names, company names, or jargon, fill in the glossary / prompt. That is where the improvement is most obvious.
+- For Chinese interviews and lectures, turn on "Long sentences first" so the transcript is not chopped into fragments.
 
 To preview noise reduction, set it to Light or Strong and leave every other option unchecked. The app then exports only `recording_denoised.wav`, which you can listen to before producing a video. In general, as long as noise reduction is not Off, `recording_denoised.wav` is written regardless of the other options.
 
@@ -156,6 +170,15 @@ The application searches, in order: the last path saved in the configuration, `f
 
 The configuration file stores the FFmpeg path, the last cover image, the output folder, the resolution, the interface language, and the recognition settings.
 
+Settings added in 5.2.0:
+
+| Key | Meaning |
+| --- | --- |
+| `asr_initial_prompt` | Glossary / prompt text, at most 800 characters; same as the box in the recognition group |
+| `asr_vad_mode` | `standard` (default) or `long`, the state of "Long sentences first" |
+| `loudnorm_enabled` | `true` (default) or `false`, the state of "Loudness normalization" |
+| `arnndn_mix` | RNNoise blend ratio, `0.8` by default, valid range 0.0–1.0; configuration file only |
+
 The first run with a given recognition model downloads its weights into `models\whisper\`:
 
 | Model | Download size |
@@ -203,6 +226,7 @@ Tests that invoke a real FFmpeg binary are marked `integration` and can be skipp
 6. **Only the first audio track is used.** Multi-track videos, such as dual-language releases, cannot pick a track; the second and later tracks are ignored.
 7. **A silent video cannot be processed.** A video without an audio track stops with a readable message instead of FFmpeg stderr.
 8. **Log history is not retranslated.** Switching the interface language leaves existing log lines in their original language.
+9. **Hallucination filtering is only partial.** It is based on text pattern matching and only drops segments of 3 seconds or more whose text matches a known pattern; a hallucination that does not match any pattern is kept. Word-level timestamps stay off, because faster-whisper's `hallucination_silence_threshold` requires them and enabling them would slow recognition noticeably.
 
 ## License
 

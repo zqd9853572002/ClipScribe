@@ -13,12 +13,14 @@ import time
 import traceback
 from dataclasses import dataclass
 
-from .asr import transcribe_audio
+from .asr import filter_hallucination_segments, transcribe_audio
 from .config import (
     DEFAULT_MODE,
+    DEFAULT_VAD_MODE,
     DENOISE_OPTIONS,
     SIZE_OPTIONS,
     STT_OFF,
+    VAD_MODES,
     option_label,
     remove_file_quiet,
     resolve_option,
@@ -55,6 +57,7 @@ LOG_ASR_PREPARE_FAILED = "log.asr_prepare_failed"
 LOG_ASR_EMPTY = "log.asr_empty"
 LOG_ASR_DONE = "log.asr_done"
 LOG_ASR_FAILED = "log.asr_failed"
+LOG_ASR_FILTERED = "log.asr_hallucination_dropped"
 LOG_VTT_SAVED = "log.vtt_saved"
 LOG_MUX_START = "log.mux_start"
 LOG_MUX_CANCELLED = "log.mux_cancelled"
@@ -98,6 +101,10 @@ class JobPlan:
     only_denoise: bool
     # ffmpeg 路径同样是主线程读到的快照（拆分前由 UI 的 self.ffmpeg_path 提供）
     ffmpeg_path: str = ""
+    # 识别质量控制与成片响度标准化
+    initial_prompt: str = ""
+    vad_mode: str = DEFAULT_VAD_MODE
+    loudnorm_enabled: bool = True
 
 
 def denoise_desc(mode):
@@ -140,7 +147,8 @@ def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised,
 
 def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, denoise_code,
                lang_code, srt, txt, mux_original, mux_denoised, ffmpeg_path="",
-               vtt=False, has_video=False):
+               vtt=False, initial_prompt="", vad_mode=DEFAULT_VAD_MODE,
+               loudnorm_enabled=True, has_video=False):
     """由纯值（非 Tk 变量）构造 JobPlan，供 UI 在主线程调用。
 
     所有 “*_mode / *_code” 参数均为**内部值**；`size_mode` 额外兼容旧版中文
@@ -181,6 +189,9 @@ def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, de
         need_denoise=need_denoise,
         only_denoise=only_denoise,
         ffmpeg_path=ffmpeg_path,
+        initial_prompt=str(initial_prompt or "").strip(),
+        vad_mode=vad_mode if vad_mode in VAD_MODES else DEFAULT_VAD_MODE,
+        loudnorm_enabled=bool(loudnorm_enabled),
     )
 
 
@@ -263,15 +274,28 @@ class Pipeline:
             if self.should_stop():
                 return False
 
+            # 只在非默认值时才追加关键字参数，保持对旧调用方 / 测试替身的兼容
+            extra = {}
+            if plan.initial_prompt:
+                extra["initial_prompt"] = plan.initial_prompt
+            if plan.vad_mode != DEFAULT_VAD_MODE:
+                extra["vad_mode"] = plan.vad_mode
+
             segments, info = transcribe_audio(
                 asr_input, plan.model_name, plan.language, duration,
                 on_progress=lambda p: self.set_progress(
                     p_start + (p_end - p_start) * p / 100.0),
                 should_stop=self.should_stop,
                 log=self.log,
+                **extra,
             )
             if self.should_stop():
                 return False
+            # 幻听后处理：只丢弃「超长 + 命中模式」的片段，正常短句保留
+            filtered = filter_hallucination_segments(segments)
+            if len(filtered) != len(segments):
+                self.log(t(LOG_ASR_FILTERED, count=len(segments) - len(filtered)))
+            segments = filtered
             if not segments:
                 self.log(t(LOG_ASR_EMPTY), True)
                 return False
@@ -321,6 +345,7 @@ class Pipeline:
                 p_start + (p_end - p_start) * p / 100.0),
             should_stop=self.should_stop,
             on_proc=self._set_proc,
+            loudnorm=plan.loudnorm_enabled,
         )
         if self.should_stop():
             remove_file_quiet(out_path)
