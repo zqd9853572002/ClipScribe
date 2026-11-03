@@ -71,7 +71,7 @@ def test_version_matches_pyproject():
     tomllib = pytest.importorskip("tomllib")  # Python 3.11+ 才有标准库 tomllib
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     assert data["project"]["version"] == config.APP_VERSION
-    assert config.APP_VERSION == "5.1.0"
+    assert config.APP_VERSION == "5.1.1"
 
 
 def test_option_tables_are_value_label_pairs():

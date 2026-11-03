@@ -61,6 +61,7 @@
   "stage.need_action": "Select at least one action",
   "stage.need_cover": "A cover image is required for video output",
   "stage.video_no_mux": "Video input only provides its audio track, so cover MP4 does not apply",
+  "stage.video_mux_skipped": "Cover MP4 is skipped for this run (video input only provides its audio track)",
   "stage.video_need_action": "For video input, tick at least one subtitle format or noise reduction",
   "stage.file_step": "File {index}/{total} · {name} · {step} ({step_index}/{step_total})",
 

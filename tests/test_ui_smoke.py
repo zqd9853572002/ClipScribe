@@ -586,3 +586,122 @@ def test_vtt_flag_is_persisted(monkeypatch):
         assert saved[-1]["vtt_enabled"] is True
     finally:
         root.destroy()
+
+
+# ==================== 三组组合语义（A 降噪 / B 字幕 / C 配图 MP4）====================
+def _select_combo(gui, *, denoise="arnndn", model="tiny", srt=False, txt=False,
+                  vtt=False, mux_original=False, mux_denoised=False):
+    """以界面同一入口设置三组选项，再统一刷新联动/校验。"""
+    gui.set_option(gui.cmb_denoise, denoise)
+    gui.set_option(gui.cmb_model, model)
+    gui.srt_var.set(srt)
+    gui.txt_var.set(txt)
+    gui.vtt_var.set(vtt)
+    gui.mux_original_var.set(mux_original)
+    gui.mux_denoised_var.set(mux_denoised)
+    gui._sync_options()
+
+
+def test_video_input_denoise_and_subtitle_runnable_without_cover(monkeypatch):
+    """用户原始场景回归：视频 + A + B，配置持久化 mux_original=true 且无封面。
+
+    旧版把置灰的复选框仍按 true 参与校验，导致永久卡在 need_cover（按钮
+    disabled 且无法取消勾选）。现在掩码后必须可直接执行。
+    """
+    root, gui, _saved = _make_app(
+        monkeypatch, cfg={"mux_original": True, "image_path": ""})
+    try:
+        # 配置持久化生效：勾选状态为 True，但视频输入下无法取消（置灰）
+        assert gui.mux_original_var.get() is True
+        gui.audio_files = ["C:/fake/clip.mp4"]
+        _select_combo(gui, denoise="arnndn", model="tiny", srt=True,
+                      mux_original=True)
+        assert gui.image_path == ""
+
+        assert gui._validate_plan() == (True, None)
+        assert str(gui.btn_start.cget("state")) == "normal"
+
+        # 置灰但保留勾选：切回音频输入时用户的选择还能恢复
+        assert str(gui.chk_mux_original.cget("state")) == "disabled"
+        assert gui.mux_original_var.get() is True
+
+        # 阶段文案只说「本次跳过」，不得同时要求封面
+        assert t("stage.video_mux_skipped") in gui.stage_var.get()
+        assert t("stage.need_cover") not in gui.stage_var.get()
+
+        plan = gui._build_plan()
+        assert plan.mux_original is False
+        assert plan.need_stt is True
+        assert plan.need_denoise is True
+    finally:
+        root.destroy()
+
+
+def test_video_input_ac_masks_mux_and_runs_denoise(app):
+    """视频 + A + C（原声 MP4）：C 被掩码，降噪仍然必须执行。"""
+    _, gui = app
+    gui.audio_files = ["C:/fake/clip.mp4"]
+    _select_combo(gui, denoise="arnndn", model="off", mux_original=True)
+
+    assert gui._validate_plan() == (True, None)
+    assert str(gui.btn_start.cget("state")) == "normal"
+
+    plan = gui._build_plan()
+    assert plan.mux_original is False
+    assert plan.mux_denoised is False
+    assert plan.need_denoise is True
+    assert plan.only_denoise is True
+
+
+def test_video_input_only_mux_reports_video_need_action(app):
+    """视频 + 仅 C：没有任何可执行动作 → video_need_action，补封面也没用。"""
+    _, gui = app
+    gui.audio_files = ["C:/fake/clip.mp4"]
+    _select_combo(gui, denoise="off", model="off", mux_original=True)
+
+    assert gui._validate_plan() == (False, "stage.video_need_action")
+    assert gui.stage_var.get().startswith(t("stage.video_need_action"))
+    assert str(gui.btn_start.cget("state")) == "disabled"
+
+    gui.image_path = "C:/fake/cover.png"
+    gui._sync_options()
+    assert gui._validate_plan() == (False, "stage.video_need_action")
+    assert str(gui.btn_start.cget("state")) == "disabled"
+
+
+def test_audio_ac_needs_cover_then_runs_denoise(app):
+    """音频 + A + C：先因缺封面被拦住，补封面后放行且降噪不再被静默跳过。"""
+    _, gui = app
+    gui.audio_files = ["C:/fake/a.mp3"]
+    _select_combo(gui, denoise="arnndn", model="off", mux_original=True)
+
+    assert gui._validate_plan() == (False, "stage.need_cover")
+    assert str(gui.btn_start.cget("state")) == "disabled"
+
+    gui.image_path = "C:/fake/cover.png"
+    gui._sync_options()
+
+    assert gui._validate_plan() == (True, None)
+    assert str(gui.btn_start.cget("state")) == "normal"
+
+    plan = gui._build_plan()
+    assert plan.mux_original is True
+    # 旧版 need_denoise=False，降噪被静默丢弃（本次修复的核心断言之一）
+    assert plan.need_denoise is True
+
+
+def test_video_to_audio_restores_both_mux_checkboxes(app):
+    """视频 → 音频切换：两个配图 MP4 复选框恢复，降噪 MP4 跟随降噪开关。"""
+    _, gui = app
+    gui.audio_files = ["C:/fake/clip.mp4"]
+    _select_combo(gui, denoise="arnndn", model="tiny", srt=True)
+    assert str(gui.chk_mux_original.cget("state")) == "disabled"
+    assert str(gui.chk_mux_denoised.cget("state")) == "disabled"
+
+    gui.audio_files = ["C:/fake/a.mp3"]
+    gui._sync_options()
+    assert str(gui.chk_mux_original.cget("state")) == "normal"
+    assert str(gui.chk_mux_denoised.cget("state")) == "normal"
+
+    gui.set_option(gui.cmb_denoise, "off")
+    assert str(gui.chk_mux_denoised.cget("state")) == "disabled"

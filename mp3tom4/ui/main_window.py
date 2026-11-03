@@ -271,7 +271,11 @@ class AudioToVideoApp:
 
     # ---------- 联动置灰 ----------
     def _option_flags(self):
-        """把界面选项折算成「本次要做什么」的布尔组合（不触碰工作线程）。"""
+        """把界面选项折算成「本次要做什么」的布尔组合（不触碰工作线程）。
+
+        `has_video` 一并传入：视频掩码只在 flags 层做一次，界面校验、按钮状态、
+        动作摘要与执行计划因此共享同一份事实，不会各算各的。
+        """
         return option_flags(
             resolve_option(STT_MODEL_OPTIONS, self.stt_model_var.get(),
                            DEFAULT_STT_MODEL)[0],
@@ -282,20 +286,33 @@ class AudioToVideoApp:
             self.mux_original_var.get(),
             self.mux_denoised_var.get(),
             self.vtt_var.get(),
+            has_video=self._has_video_input(),
         )
 
     def _validate_plan(self):
-        """返回 (是否可执行, 不可执行时的阶段词条 key)。"""
-        flags = self._option_flags()
+        """返回 (是否可执行, 不可执行时的阶段词条 key)。
+
+        判定顺序固定，且**全部使用掩码后的 flags**：
+          1. 没选文件 → need_audio
+          2. 三组都没有有效动作 → need_action；视频输入下若是「用户的配图 MP4
+             被掩码掉了」，改为更准确的 video_need_action
+          3. 需要产出配图 MP4 却没有封面 → need_cover
+          4. 通过
+
+        旧版第 3 步用的是原始勾选值，视频输入把复选框置灰却不清值，导致
+        「持久化 mux_original=true + 无封面」被判成缺封面且无法取消 —— 按钮
+        永久 disabled 的死锁。改用掩码值后该路径不再存在。
+        """
         if not self.audio_files:
             return False, "stage.need_audio"
-        # 视频输入只提取音轨：若仍勾着「配图 MP4」却没有任何字幕 / 降噪目标，
-        # 说明用户想要的其实是对视频重新封装 —— 本项目不支持，必须明确报错。
-        if self._has_video_input() and (flags["mux_original"] or flags["mux_denoised"]) \
-                and not (flags["need_stt"] or flags["denoise_on"]):
-            return False, "stage.video_need_action"
-        if not (flags["need_stt"] or flags["mux_original"]
-                or flags["mux_denoised"] or flags["only_denoise"]):
+
+        flags = self._option_flags()
+        has_action = (flags["need_stt"] or flags["need_denoise"]
+                      or flags["mux_original"] or flags["mux_denoised"])
+        if not has_action:
+            if self._has_video_input() and (
+                    self.mux_original_var.get() or self.mux_denoised_var.get()):
+                return False, "stage.video_need_action"
             return False, "stage.need_action"
         if (flags["mux_original"] or flags["mux_denoised"]) and not self.image_path:
             return False, "stage.need_cover"
@@ -370,14 +387,17 @@ class AudioToVideoApp:
                 save_config(self.cfg)
 
         # 视频输入只提取音轨做识别 / 降噪，「音轨 + 封面图」重新封装不适用，
-        # 因此两个配图 MP4 选项一律置灰（勾选状态保留，由校验给出明确提示）。
+        # 因此两个配图 MP4 选项一律置灰；勾选值保留（切回音频后可恢复），
+        # 但校验与执行计划都只看掩码后的值，不会再据此误判「需要封面」。
         has_video = self._has_video_input()
         if has_video:
             self.chk_mux_original.config(state=tk.DISABLED)
             self.chk_mux_denoised.config(state=tk.DISABLED)
         else:
-            # 切回纯音频输入时恢复（降噪 MP4 的可用性仍由上面的降噪开关决定）
+            # 切回纯音频输入时恢复：原声 MP4 恒可用，降噪 MP4 仍需跟随降噪开关
             self.chk_mux_original.config(state=tk.NORMAL)
+            self.chk_mux_denoised.config(
+                state=tk.NORMAL if flags["denoise_on"] else tk.DISABLED)
 
         # 封面按钮：没有视频输出时灰色但仍可点击，方便提前准备素材
         if flags["mux_original"] or flags["mux_denoised"]:
@@ -393,7 +413,12 @@ class AudioToVideoApp:
         if auto_unchecked:
             notes.append("stage.denoise_off_unchecked")
         if has_video:
-            notes.append("stage.video_no_mux")
+            # C 被掩码掉时明确说「本次跳过」；未勾 C 时仍提示「不适用」。
+            # 两种情况都不会再叠加 need_cover，避免自相矛盾。
+            if self.mux_original_var.get() or self.mux_denoised_var.get():
+                notes.append("stage.video_mux_skipped")
+            else:
+                notes.append("stage.video_no_mux")
         ok, key = self._validate_plan()
         if ok:
             self._set_stage(
@@ -821,6 +846,7 @@ class AudioToVideoApp:
             mux_denoised=bool(self.mux_denoised_var.get()),
             ffmpeg_path=self.ffmpeg_path,
             vtt=bool(self.vtt_var.get()),
+            has_video=self._has_video_input(),
         )
 
     def start_processing(self):

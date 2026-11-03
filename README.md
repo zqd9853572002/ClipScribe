@@ -41,10 +41,11 @@ Select one or more audio or video files, configure the three option groups below
 | | Cover image | JPG, PNG, BMP, WEBP |
 | | Resolution | 1080p (default) / 720p / original image size |
 
-- Noise reduction runs at most once per file; subtitles and the denoised video reuse that result.
-- A cover image is required only when a video output is selected.
+- Noise reduction runs at most once per file; subtitles and the denoised video reuse that result. Whenever the noise-reduction group is not Off, `{name}_denoised.wav` is always written, even if no subtitle or video output uses it.
+- Any combination of the three groups can run: each group on its own, or A+B, A+C, B+C, and A+B+C. The only combination that cannot run is a video input with nothing checked except a cover MP4 option; the app then asks for at least one subtitle format or noise reduction.
+- A cover image is required only for audio input with a cover MP4 option selected. Video input never needs a cover.
 - The denoised-video option requires noise reduction to be on; when noise reduction is Off, that option is ignored.
-- For video input, both cover MP4 options are greyed out with an explanation: a video supplies only its audio track, and its picture is never kept or remuxed.
+- For video input, both cover MP4 options are skipped: they stay greyed out, they do not run even if they were checked earlier, and no cover image is requested. The app reports "Cover MP4 is skipped for this run (video input only provides its audio track)". Their checked state is kept and restored when you go back to an audio file.
 - Accepted audio formats are the ones FFmpeg can decode, including MP3, M4A, M4B, AAC, WAV, FLAC, OGG, OGA, OPUS, WMA, AIFF, APE, WV, AMR, AC3, and DTS.
 - Accepted video formats are MP4, WebM, MKV, MOV, and M4V. Only the first audio track is extracted (`-vn`, first audio stream) and converted to 16 kHz mono WAV before recognition, so a multi-track video cannot switch tracks.
 - A video with no audio track stops with a readable message ("The input has no usable audio track…") instead of raw FFmpeg stderr.
@@ -56,12 +57,14 @@ Defaults: 1080p, large-v3-turbo, auto-detect, and light RNNoise.
 | Goal | What to select |
 | --- | --- |
 | Subtitles only | Any model except Off; check SRT, VTT, and/or TXT; no cover needed |
-| Subtitles from a video | Choose the video file; check SRT, VTT, and/or TXT; set the spoken language to English for English videos; leave both MP4 options unchecked (they are disabled for video input) |
+| Subtitles from a video | Choose the video file; check SRT, VTT, and/or TXT; set the spoken language to English for English videos; leave both MP4 options unchecked (they are skipped automatically for video input) |
 | MP4 with the original audio | Check "MP4 · Original Audio"; choose a cover |
 | MP4 with the denoised audio | Set noise reduction to Light or Strong; check "MP4 · Denoised Audio"; choose a cover |
 | Everything | Check both MP4 options and at least one subtitle format, and set noise reduction to Light or Strong |
 
-To preview noise reduction, set it to Light or Strong and leave every other option unchecked. The app then exports only `recording_denoised.wav`, which you can listen to before producing a video.
+Every combination of the three groups is valid, from any single group up to all three at once (A+B, A+C, B+C, and A+B+C). The only combination that does nothing is a video input with no subtitle format and no noise reduction.
+
+To preview noise reduction, set it to Light or Strong and leave every other option unchecked. The app then exports only `recording_denoised.wav`, which you can listen to before producing a video. In general, as long as noise reduction is not Off, `recording_denoised.wav` is written regardless of the other options.
 
 ## Output files and naming
 
@@ -196,7 +199,7 @@ Tests that invoke a real FFmpeg binary are marked `integration` and can be skipp
 2. **Cancellation is not instantaneous.** FFmpeg-based steps such as noise reduction and muxing stop immediately, but Whisper inference is a blocking call, so cancellation waits for the current segment to finish.
 3. **The first transcription is slow.** It includes downloading the model and can take minutes to tens of minutes depending on the network and model size.
 4. **Subtitles are sidecar files.** They are not burned into the video picture.
-5. **Video input keeps no picture.** A video is only an audio source: its frames are never kept, remuxed, or re-encoded, so the two cover MP4 options are disabled for video files.
+5. **Video input keeps no picture.** A video is only an audio source: its frames are never kept, remuxed, or re-encoded. The two cover MP4 options are therefore skipped for video files: they stay greyed out, do not run even if they were checked, and need no cover image; the checked state is kept for the next audio file. A video with no subtitle format and no noise reduction has nothing left to do, so the app asks for at least one of them.
 6. **Only the first audio track is used.** Multi-track videos, such as dual-language releases, cannot pick a track; the second and later tracks are ignored.
 7. **A silent video cannot be processed.** A video without an audio track stops with a readable message instead of FFmpeg stderr.
 8. **Log history is not retranslated.** Switching the interface language leaves existing log lines in their original language.

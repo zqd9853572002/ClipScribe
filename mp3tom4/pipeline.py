@@ -108,20 +108,30 @@ def denoise_desc(mode):
 
 
 def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised,
-                 vtt=False):
-    """把界面选项折算成「本次要做什么」的布尔组合（纯函数，不触碰工作线程）。"""
+                 vtt=False, has_video=False):
+    """把界面选项折算成「本次要做什么」的布尔组合（纯函数，不触碰工作线程）。
+
+    `has_video` 是**视频掩码**的单一事实源：视频输入只提取音轨，因此配图 MP4
+    在这类输入下一律不适用。掩码必须在这里完成而不是只靠 UI 置灰——置灰不会
+    改变 BooleanVar 的持久化值，只看原始勾选值会得出「仍要出 MP4」的错误结论。
+
+    另外 `need_denoise` 直接等于 `denoise_on`：只要降噪组不是 off，就必须真的
+    执行降噪，否则「音频 + 降噪 + 原声 MP4」这类组合会静默丢掉降噪结果。
+    """
     denoise_on = denoise_code != "off"
     srt = bool(srt)
     txt = bool(txt)
     vtt = bool(vtt)
-    mux_original = bool(mux_original)
-    mux_denoised = bool(mux_denoised) and denoise_on
+    mux_original = bool(mux_original) and not has_video
+    mux_denoised = bool(mux_denoised) and denoise_on and not has_video
     need_stt = (model_code != STT_OFF) and (srt or txt or vtt)
+    need_denoise = denoise_on
     only_denoise = denoise_on and not need_stt and not mux_original and not mux_denoised
     return {
         "stt_on": model_code != STT_OFF,
         "denoise_on": denoise_on,
         "need_stt": need_stt,
+        "need_denoise": need_denoise,
         "mux_original": mux_original,
         "mux_denoised": mux_denoised,
         "only_denoise": only_denoise,
@@ -130,11 +140,12 @@ def option_flags(model_code, denoise_code, srt, txt, mux_original, mux_denoised,
 
 def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, denoise_code,
                lang_code, srt, txt, mux_original, mux_denoised, ffmpeg_path="",
-               vtt=False):
+               vtt=False, has_video=False):
     """由纯值（非 Tk 变量）构造 JobPlan，供 UI 在主线程调用。
 
     所有 “*_mode / *_code” 参数均为**内部值**；`size_mode` 额外兼容旧版中文
-    显示文案，避免旧配置在升级瞬间失效。
+    显示文案，避免旧配置在升级瞬间失效。`has_video` 语义见 `option_flags()`：
+    视频输入下配图 MP4 一律掩码为 False，且 `need_denoise` 只由降噪开关决定。
     """
     model_name = None if model_code == STT_OFF else model_code
     denoise_mode = None if denoise_code == "off" else denoise_code
@@ -143,14 +154,15 @@ def build_plan(*, audio_files, output_dir, image_path, size_mode, model_code, de
     srt = bool(srt)
     txt = bool(txt)
     vtt = bool(vtt)
-    mux_original = bool(mux_original)
-    mux_denoised = bool(mux_denoised) and denoise_mode is not None
+    mux_original = bool(mux_original) and not has_video
+    mux_denoised = bool(mux_denoised) and denoise_mode is not None and not has_video
 
     need_stt = (model_name is not None) and (srt or txt or vtt)
     only_denoise = (denoise_mode is not None) and not need_stt \
         and not mux_original and not mux_denoised
-    need_denoise = (denoise_mode is not None) and (
-        need_stt or mux_denoised or only_denoise)
+    # 降噪不是「附属步骤」而是用户组 A 的独立意图：只要开了就必须执行，
+    # 否则 AC（降噪 + 原声 MP4）这类组合会静默跳过降噪。
+    need_denoise = denoise_mode is not None
 
     return JobPlan(
         audio_files=list(audio_files),

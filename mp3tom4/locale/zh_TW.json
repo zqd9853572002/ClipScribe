@@ -61,6 +61,7 @@
   "stage.need_action": "請至少選擇一種處理方式",
   "stage.need_cover": "已選影片輸出，還需選擇封面圖片",
   "stage.video_no_mux": "影片輸入只擷取音軌，配圖 MP4 不適用",
+  "stage.video_mux_skipped": "配圖 MP4 本次略過（影片輸入只擷取音軌）",
   "stage.video_need_action": "影片輸入請至少勾選一種字幕格式或降噪",
   "stage.file_step": "第 {index}/{total} 個 · {name} · 正在{step}（{step_index}/{step_total}）",
 
