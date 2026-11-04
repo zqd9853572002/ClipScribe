@@ -56,9 +56,10 @@ clipscribe = "clipscribe.app:main"
 clipscribe-gui = "clipscribe.app:main"
 
 [project.urls]
-Homepage = "https://github.com/zqd9853572002/Mp3_to_Mp4"
-Repository = "https://github.com/zqd9853572002/Mp3_to_Mp4"
-Issues = "https://github.com/zqd9853572002/Mp3_to_Mp4/issues"
+Homepage = "https://github.com/zqd9853572002/ClipScribe"
+Repository = "https://github.com/zqd9853572002/ClipScribe"
+Issues = "https://github.com/zqd9853572002/ClipScribe/issues"
+Changelog = "https://github.com/zqd9853572002/ClipScribe/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["clipscribe*"]

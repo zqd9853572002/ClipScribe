@@ -172,7 +172,7 @@ Other rules:
 
 **Command changes.** `python MP3toMP4.py` becomes `python ClipScribe.py`; the module form `python -m clipscribe` and the installed commands `clipscribe` / `clipscribe-gui` also work. Any script, shortcut, or scheduled task that referenced the old script name or the `mp3tom4` package must be updated.
 
-The GitHub repository is being renamed to `ClipScribe` at <https://github.com/zqd9853572002/ClipScribe>; old links redirect to the new address.
+The GitHub repository was renamed to `ClipScribe` at <https://github.com/zqd9853572002/ClipScribe>; old links redirect to the new address.
 
 ## Requirements
 

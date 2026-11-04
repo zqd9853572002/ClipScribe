@@ -172,7 +172,7 @@ VTT 預設不勾選。它和 SRT / TXT 一樣隨辨識模型開關連動變灰�
 
 **指令變化。** `python MP3toMP4.py` 改為 `python ClipScribe.py`；也支援模組方式 `python -m clipscribe`，以及安裝後的 `clipscribe` / `clipscribe-gui`。任何引用了舊腳本名稱或 `mp3tom4` 套件的腳本、捷徑和排程工作都需要同步修改。
 
-GitHub 儲存庫正在改名為 `ClipScribe`，新位址是 <https://github.com/zqd9853572002/ClipScribe>，舊連結會跳轉到新位址。
+GitHub 儲存庫已改名為 `ClipScribe`，新位址是 <https://github.com/zqd9853572002/ClipScribe>，舊連結會自動跳轉到新位址。
 
 ## 系統需求
 
