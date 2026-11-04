@@ -6,14 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from mp3tom4 import config
-from mp3tom4.i18n import t
+from clipscribe import config
+from clipscribe.i18n import t
 
 PYPROJECT = Path(config.__file__).resolve().parent.parent / "pyproject.toml"
 
 
 def test_constants_complete():
-    assert config.APP_NAME == "Mp3ToMp4"
+    # 6.0.0：项目改名为 ClipScribe，配置目录名同步改名
+    assert config.APP_NAME == "ClipScribe"
+    # 旧目录名只作为迁移来源保留，不得再被路径函数使用
+    assert config.LEGACY_APP_NAME == "Mp3ToMp4"
     assert config.APP_VERSION
     # 应用标题已外置为词条（config 不再持有中文字面量）
     assert t("app.title")
@@ -71,8 +74,8 @@ def test_version_matches_pyproject():
     tomllib = pytest.importorskip("tomllib")  # Python 3.11+ 才有标准库 tomllib
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     assert data["project"]["version"] == config.APP_VERSION
-    # 5.3.0：批次 B 新增硬字幕烧录（minor 升级）
-    assert config.APP_VERSION == "5.3.0"
+    # 6.0.0：包名 / 配置目录改名属破坏性变更（major 升级）
+    assert config.APP_VERSION == "6.0.0"
 
 
 def test_option_tables_are_value_label_pairs():
@@ -131,11 +134,15 @@ def test_resolve_option_unknown_falls_back_to_explicit_default():
     assert config.resolve_option(config.SIZE_OPTIONS, "??", "720p") == ("720p", False)
 
 
-def test_config_paths_keep_appdata_layout(monkeypatch, tmp_path):
-    """%APPDATA%\\Mp3ToMp4\\config.json 与 ...\\models 路径必须原样保留。"""
+def test_config_paths_use_new_appdata_layout(monkeypatch, tmp_path):
+    """配置与模型路径落在 %APPDATA%\\ClipScribe 下，且不再指向旧目录名。"""
     monkeypatch.setenv("APPDATA", str(tmp_path))
-    assert config.config_file() == tmp_path / "Mp3ToMp4" / "config.json"
-    assert config.models_root() == tmp_path / "Mp3ToMp4" / "models"
+    assert config.config_file() == tmp_path / "ClipScribe" / "config.json"
+    assert config.models_root() == tmp_path / "ClipScribe" / "models"
+    # 旧目录名只能出现在迁移来源里
+    assert config.legacy_config_root() == tmp_path / "Mp3ToMp4"
+    assert "Mp3ToMp4" not in str(config.config_file())
+    assert "Mp3ToMp4" not in str(config.models_root())
 
 
 def test_config_round_trip(monkeypatch, tmp_path):

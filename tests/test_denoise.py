@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """denoise 模块：降噪滤镜链构造（RNNoise / afftdn 降级 / arnndn mix）。"""
 
-from mp3tom4.denoise import build_denoise_chain
+from clipscribe.denoise import build_denoise_chain
 
 
 def test_fallback_chain_uses_highpass_and_afftdn():
@@ -36,7 +36,7 @@ def test_arnndn_mix_is_clamped():
 
 def test_configured_arnndn_mix_is_used():
     """config.json 里的 arnndn_mix 生效（无需 UI 暴露）。"""
-    from mp3tom4 import config
+    from clipscribe import config
 
     config.save_config({"arnndn_mix": 0.6})
     assert ":mix=0.6" in build_denoise_chain("/m/bd.rnnn", 48000)

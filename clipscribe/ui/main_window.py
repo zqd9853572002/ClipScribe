@@ -2,7 +2,7 @@
 """主窗口：布局、联动置灰、文件选择、配置持久化、日志/进度与线程启动。
 
 业务执行全部交给 `pipeline.Pipeline`，本模块不直接调用 ffmpeg/asr 函数。
-所有用户可见文案均通过 `mp3tom4.i18n.t()` 取得，并绑定到 `tk.StringVar`，
+所有用户可见文案均通过 `clipscribe.i18n.t()` 取得，并绑定到 `tk.StringVar`，
 因此切换语言时只需重设变量，无需销毁重建窗口（输入状态与历史日志都保留）。
 """
 
@@ -26,11 +26,17 @@ from ..config import (
     DENOISE_OPTIONS,
     IMAGE_EXTS,
     INPUT_EXTS,
+    MIGRATION_FAILED,
+    MIGRATION_MIGRATED,
+    MIGRATION_SKIPPED,
     SIZE_OPTIONS,
     STT_LANG_OPTIONS,
     STT_MODEL_OPTIONS,
     VIDEO_EXTS,
+    config_root,
     is_video_file,
+    last_migration,
+    legacy_config_root,
     legacy_subtitle_flags,
     load_config,
     module_available,
@@ -755,6 +761,7 @@ class AudioToVideoApp:
         self.text_area.tag_config("info", foreground="#5CB3FF")
 
         self.log(t("log.welcome", title=t("app.title"), version=APP_VERSION))
+        self._log_migration_notice()
         self.log(t("log.render_info"))
         self.log(t("log.formats",
                    formats=" / ".join(ext.lstrip(".").upper() for ext in AUDIO_EXTS[:10])))
@@ -771,6 +778,20 @@ class AudioToVideoApp:
             self.log(warning, is_error=True)
         self._startup_warnings.clear()
         self._sync_options()
+
+    def _log_migration_notice(self):
+        """输出版本 6.0 的配置目录迁移结果（成功 / 跳过 / 未发现 / 失败）。"""
+        status, detail = last_migration()
+        if status == MIGRATION_MIGRATED:
+            self.log(t("log.config_migrated",
+                       old=legacy_config_root(), new=config_root()))
+        elif status == MIGRATION_FAILED:
+            self.log(t("log.config_migration_failed",
+                       exc=detail, path=legacy_config_root()), is_error=True)
+        elif status == MIGRATION_SKIPPED:
+            self.log(t("log.config_migration_skipped", path=config_root()))
+        else:
+            self.log(t("log.config_migration_absent", path=config_root()))
 
     def _var_for(self, key, **kwargs):
         """快捷构造：创建 StringVar 并登记词条（控件直接绑定）。"""

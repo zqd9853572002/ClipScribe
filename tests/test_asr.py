@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from mp3tom4 import asr
-from mp3tom4.config import (
+from clipscribe import asr
+from clipscribe.config import (
     ASR_PROMPT_MAX_CHARS,
     HALLUCINATION_MIN_DURATION_S,
     hallucination_patterns,

@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible bug in mp3tom4 (MP3 to MP4 batch engine)
+description: Report a reproducible bug in clipscribe (audio/video to subtitles and cover-image MP4)
 title: "[Bug] "
 labels: ["bug"]
 body:

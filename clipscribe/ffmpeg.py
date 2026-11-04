@@ -353,7 +353,7 @@ def convert_one(ffmpeg, audio_path, image_path, out_path, mode, duration, on_pro
     audio_path = os.path.abspath(audio_path)
     image_path = os.path.abspath(image_path)
     out_path = os.path.abspath(out_path)
-    workdir = tempfile.mkdtemp(prefix="mp3tomp4_burn_")
+    workdir = tempfile.mkdtemp(prefix="clipscribe_burn_")
     try:
         try:
             shutil.copyfile(sub_path, os.path.join(workdir, SUB_COPY_NAME))

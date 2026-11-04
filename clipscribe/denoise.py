@@ -265,7 +265,7 @@ def render_denoised_audio(ffmpeg, src, out_wav, mode, should_stop, log,
                 log(t("log.gtcrn_fallback"), True)
             return render_denoised_audio(ffmpeg, src, out_wav, "arnndn",
                                          should_stop, log, progress_cb, on_proc)
-        workdir = tempfile.mkdtemp(prefix="mp3tomp4_denoise_")
+        workdir = tempfile.mkdtemp(prefix="clipscribe_denoise_")
         try:
             if log:
                 log(t("log.gtcrn_upsample_note"))

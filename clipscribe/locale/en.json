@@ -3,7 +3,7 @@
   "lang.zh_TW": "繁體中文",
   "lang.en": "English",
 
-  "app.title": "Fast Audio to MP4 Batch Engine",
+  "app.title": "ClipScribe",
   "app.window_title": "{title} v{version}",
   "app.lang_label": "Language",
 
@@ -108,7 +108,7 @@
   "dlg.app_error_title": "Unexpected Error",
   "dlg.startup_failed_title": "Startup Failed",
 
-  "log.welcome": ">>> Welcome to {title} v{version} (FFmpeg engine + speech recognition).\n",
+  "log.welcome": ">>> Welcome to {title} v{version} (audio/video transcription · subtitles · cover-image MP4 · noise reduction).\n",
   "log.render_info": ">>> Rendering: 1 frame per second, tiny video, audio re-encoded to AAC 192k.\n",
   "log.formats": ">>> Supports {formats} and more.\n",
   "log.asr_ready": ">>> 🎧 Speech recognition: faster-whisper is ready (the selected model downloads on first use).\n",
@@ -136,6 +136,10 @@
   "log.start": ">>> 🚀 Processing {count} file(s).\n\n",
   "log.cancel_request": ">>> 🛑 Cancel requested, stopping the current task...\n",
   "log.config_fallback": ">>> ⚠ Unrecognized value \"{raw}\" for setting \"{name}\", falling back to {value}.\n",
+  "log.config_migrated": ">>> 📦 Migrated the legacy config and model folder to {new} (was {old}).\n",
+  "log.config_migration_skipped": ">>> 📦 Config and model folder: {path}\n",
+  "log.config_migration_absent": ">>> 📦 No legacy config folder found; using {path}.\n",
+  "log.config_migration_failed": ">>> ⚠ Config folder migration failed ({exc}); continuing to use the legacy folder: {path}\n",
   "log.prompt_truncated": ">>> ⚠ Terms / prompt exceeds {limit} characters; the excess was truncated.\n",
 
   "log.file_start": "[{index}/{total}] {name}\n",

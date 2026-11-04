@@ -8,6 +8,49 @@
 > 说明：`4.1` 及更早的条目由 `mp3tom4/__init__.py` 的包文档迁入，原始开发
 > 日志未记录具体发布日期，故仅保留版本号与小标题。
 
+## [6.0.0] - 2026-11-04
+
+### Changed
+- 项目更名为 **ClipScribe**：产品名、窗口标题、欢迎语和启动日志统一改用新名称，
+  文案改为反映完整能力定位（音视频转写 · 字幕 · 配图 MP4 · 降噪），不再只强调
+  MP3 转 MP4
+- Python 包目录 `mp3tom4/` 更名为 `clipscribe/`，根入口脚本 `MP3toMP4.py` 更名为
+  `ClipScribe.py`；所有内部导入、打包配置与包数据声明同步更新
+- 控制台命令 `mp3tom4` / `mp3tom4-gui` 更名为 `clipscribe` / `clipscribe-gui`，
+  并新增模块入口 `python -m clipscribe`
+- 配置与模型缓存目录由 `%APPDATA%\Mp3ToMp4` 改为 `%APPDATA%\ClipScribe`
+  （`config.json` 与 `models\` 均在其中）
+- GitHub 仓库更名为 `ClipScribe`，新地址
+  <https://github.com/zqd9853572002/ClipScribe>，旧地址自动跳转
+- 测试套件扩充至 303 项（新增 8 项配置目录迁移用例，覆盖重命名、幂等、跨盘回退、
+  全部失败保留旧目录、半成品清理与迁移后模型缓存命中）
+
+### Added
+- 首次启动自动迁移旧配置与模型目录：把 `%APPDATA%\Mp3ToMp4` 整个目录重命名为
+  `%APPDATA%\ClipScribe`（`os.replace`），不做复制，已下载的模型不会重新下载
+- 迁移三重降级：直接重命名 → 跨盘时退回 `shutil.move` 移动 → 两步都失败则放弃
+  迁移并继续使用旧目录，日志写出原因，应用照常启动，绝不崩溃
+- 启动日志固定输出一行配置目录状态：已迁移 / 使用新目录 / 未发现旧目录 /
+  迁移失败继续用旧目录
+- 新增 8 项迁移测试（`tests/test_migration.py`），并保证迁移后
+  `whisper_model_ready()` 仍能命中缓存
+
+### Migration
+- 新目录已存在时不做任何迁移：不覆盖、不合并、不触碰旧目录，以新目录为准
+- 旧目录只作为一次性迁移来源，正常使用中不再被读写
+- 迁移失败时保留旧目录的完整性，并清理 `shutil.move` 半途失败可能留下的半成品
+  新目录，避免下次启动被误判为「已迁移」而导致模型丢失
+- 用户设置（FFmpeg 路径、封面、输出目录、语言、识别参数、`arnndn_mix`、
+  `burn_subtitles`）随目录整体迁移，6.0.0 没有新增配置键
+
+### Breaking
+- 包名与入口变更：`import mp3tom4`、`python MP3toMP4.py`、`mp3tom4`、
+  `mp3tom4-gui`、`pip install` 后的旧命令全部失效；引用旧脚本名或旧包名的脚本、
+  快捷方式与计划任务需改为 `clipscribe` / `python ClipScribe.py`
+- 回退到 5.x 时，旧版只识别 `%APPDATA%\Mp3ToMp4`，会重新创建空目录并重新下载
+  识别模型；如需避免重复下载，可先把 `%APPDATA%\ClipScribe` 复制回
+  `%APPDATA%\Mp3ToMp4` 再运行 5.x
+
 ## [5.3.0] - 2026-11-03
 
 ### Added

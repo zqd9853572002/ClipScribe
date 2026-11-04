@@ -297,7 +297,7 @@ class Pipeline:
             return self._burn_srt
         if not self._segments:
             return ""
-        handle, path = tempfile.mkstemp(prefix="mp3tomp4_burn_", suffix=".srt")
+        handle, path = tempfile.mkstemp(prefix="clipscribe_burn_", suffix=".srt")
         os.close(handle)
         self._temps.append(path)
         write_srt(self._segments, path)
@@ -314,7 +314,7 @@ class Pipeline:
         因此即使步骤顺序被重排，也不会悄悄退化成「对原声识别」。
         """
         plan = self.plan
-        workdir = tempfile.mkdtemp(prefix="mp3tomp4_asr_")
+        workdir = tempfile.mkdtemp(prefix="clipscribe_asr_")
         started = time.time()
         try:
             lang_text = plan.language or t("label.lang_auto")

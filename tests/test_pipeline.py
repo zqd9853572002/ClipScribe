@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from mp3tom4 import pipeline as pipeline_mod
-from mp3tom4.ffmpeg import probe_duration
-from mp3tom4.pipeline import Pipeline, build_plan, build_steps, option_flags
+from clipscribe import pipeline as pipeline_mod
+from clipscribe.ffmpeg import probe_duration
+from clipscribe.pipeline import Pipeline, build_plan, build_steps, option_flags
 
 BASE = dict(
     audio_files=["/tmp/a.mp3"],
@@ -314,7 +314,7 @@ def test_pipeline_has_no_ui_dependency():
 
 
 def test_subtitle_is_pure_module():
-    from mp3tom4 import subtitle as subtitle_mod
+    from clipscribe import subtitle as subtitle_mod
 
     source = inspect.getsource(subtitle_mod)
     assert "from .config" not in source
@@ -689,7 +689,7 @@ def test_burn_font_missing_logs_once(monkeypatch, tmp_path):
                           sub_path=str(tmp_path / "sub.srt"))
 
     assert captured["font_name"] == ""
-    from mp3tom4.i18n import t as tr
+    from clipscribe.i18n import t as tr
 
     warnings = [text for text, _err in rec.logs if text == tr("log.burn_font_missing")]
     assert len(warnings) == 1

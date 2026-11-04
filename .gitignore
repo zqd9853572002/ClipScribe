@@ -63,7 +63,7 @@ htmlcov/
 *.onnx
 *.rnnn
 
-# 模型权重只存在 %APPDATA%\Mp3ToMp4\models，不进入仓库
+# 模型权重只存在 %APPDATA%\ClipScribe\models，不进入仓库
 models/
 
 # 注意：Black.png 与 README.MD 必须保留，不要误伤

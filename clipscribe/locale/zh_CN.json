@@ -3,7 +3,7 @@
   "lang.zh_TW": "繁體中文",
   "lang.en": "English",
 
-  "app.title": "极速音频转 MP4 批量引擎",
+  "app.title": "ClipScribe",
   "app.window_title": "{title} v{version}",
   "app.lang_label": "界面语言",
 
@@ -108,7 +108,7 @@
   "dlg.app_error_title": "程序异常",
   "dlg.startup_failed_title": "启动失败",
 
-  "log.welcome": ">>> 欢迎使用 {title} v{version}（FFmpeg 引擎 + 语音识别）。\n",
+  "log.welcome": ">>> 欢迎使用 {title} v{version}（音视频转写 · 字幕 · 配图 MP4 · 降噪）。\n",
   "log.render_info": ">>> 渲染逻辑：1 帧/秒，视频极小，音频保持原样重编码为 AAC 192k。\n",
   "log.formats": ">>> 支持 {formats} 等格式。\n",
   "log.asr_ready": ">>> 🎧 语音识别：faster-whisper 已就绪（首次使用会下载所选模型）。\n",
@@ -136,6 +136,10 @@
   "log.start": ">>> 🚀 开始处理，共 {count} 个文件。\n\n",
   "log.cancel_request": ">>> 🛑 已请求取消，正在停止当前任务...\n",
   "log.config_fallback": ">>> ⚠ 配置项「{name}」的值「{raw}」无法识别，已回退为 {value}。\n",
+  "log.config_migrated": ">>> 📦 已将旧版配置与模型目录迁移到 {new}（原 {old}）。\n",
+  "log.config_migration_skipped": ">>> 📦 配置与模型目录：{path}\n",
+  "log.config_migration_absent": ">>> 📦 未发现旧版配置目录，使用 {path}。\n",
+  "log.config_migration_failed": ">>> ⚠ 配置目录迁移失败（{exc}），将继续使用旧配置目录：{path}\n",
   "log.prompt_truncated": ">>> ⚠ 术语 / 提示词超过 {limit} 字符，超出部分已截断。\n",
 
   "log.file_start": "[{index}/{total}] {name}\n",

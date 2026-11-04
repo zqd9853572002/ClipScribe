@@ -9,8 +9,8 @@ import pytest
 
 tk = pytest.importorskip("tkinter")
 
-from mp3tom4 import i18n  # noqa: E402
-from mp3tom4.config import (  # noqa: E402
+from clipscribe import i18n  # noqa: E402
+from clipscribe.config import (  # noqa: E402
     APP_VERSION,
     ASR_PROMPT_MAX_CHARS,
     DEFAULT_STT_MODEL,
@@ -18,8 +18,8 @@ from mp3tom4.config import (  # noqa: E402
     SIZE_OPTIONS,
     STT_MODEL_OPTIONS,
 )
-from mp3tom4.i18n import get_language, set_language, t  # noqa: E402
-from mp3tom4.ui import main_window as mw  # noqa: E402
+from clipscribe.i18n import get_language, set_language, t  # noqa: E402
+from clipscribe.ui import main_window as mw  # noqa: E402
 
 KEY_WIDGETS = [
     "lbl_engine", "btn_engine", "btn_redetect",
@@ -295,7 +295,7 @@ def test_unknown_model_falls_back_to_default(monkeypatch):
 
 def test_display_labels_come_from_options():
     """下拉框显示项就是选项表词条的翻译，且与内部值一一对应。"""
-    from mp3tom4.config import option_labels
+    from clipscribe.config import option_labels
 
     assert option_labels(SIZE_OPTIONS) == [
         t("opt.size.1080p"), t("opt.size.720p"), t("opt.size.orig")]
@@ -435,7 +435,9 @@ def test_language_switch_updates_key_widgets(app):
     assert t("group.options_a") in _group_title_texts(gui.groups["group.options_a"])
     assert "Options A · Noise Reduction" in _group_title_texts(
         gui.groups["group.options_a"])
-    assert root.title().startswith("Fast Audio to MP4 Batch Engine")
+    # 标题品牌名不随语言变化，版本号与词条模板必须完全一致
+    assert root.title().startswith("ClipScribe")
+    assert root.title() == t("app.window_title", title=t("app.title"), version=APP_VERSION)
 
     # 状态保留：窗口对象、音频选择、阶段文本都还在
     assert gui.audio_files == ["C:/fake/a.mp3"]

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """subtitle 模块：时间戳边界、中英混排折行、SRT/TXT 内容与重名唯一路径。"""
 
-from mp3tom4 import subtitle as st
-from mp3tom4.ffmpeg import unique_path
+from clipscribe import subtitle as st
+from clipscribe.ffmpeg import unique_path
 
 
 # ---------- format_timestamp ----------

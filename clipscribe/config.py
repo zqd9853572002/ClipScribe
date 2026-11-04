@@ -13,17 +13,22 @@ denoise / pipeline / ui**。`i18n` 读取配置时采用函数内延迟导入，
 
 import importlib.util
 import json
+import logging
 import os
+import shutil
 import urllib.request
 from pathlib import Path
 
 from .i18n import t, text_for
 
-APP_NAME = "Mp3ToMp4"
-APP_VERSION = "5.3.0"
+APP_NAME = "ClipScribe"
+# 5.x 及更早版本使用的目录名：**仅**用于一次性迁移旧配置与模型缓存，
+# 不会出现在任何面向用户的文案里（文案走 i18n 词条）。
+LEGACY_APP_NAME = "Mp3ToMp4"
+APP_VERSION = "6.0.0"
 
 # 项目根目录（原单文件脚本所在目录）：用于探测随程序放置的 ffmpeg.exe。
-# 原代码用 `Path(__file__).resolve().parent`，模块化后本文件位于 <根>/mp3tom4/，
+# 原代码用 `Path(__file__).resolve().parent`，模块化后本文件位于 <根>/clipscribe/，
 # 因此取上一级，保证探测行为与拆分前完全一致。
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -50,7 +55,7 @@ def is_video_file(path) -> bool:
 # ---------- 选项表：内部值 ↔ 文案词条 key ----------
 # 所有下拉框的「值」与「文案」在此分离：
 #   * 配置文件、任务计划一律使用内部值（二元组左侧），跨版本稳定；
-#   * 二元组右侧是 `mp3tom4/locale/*.json` 的词条 key，由 `option_label()`
+#   * 二元组右侧是 `clipscribe/locale/*.json` 的词条 key，由 `option_label()`
 #     在渲染时翻译，因此切换语言后重新渲染下拉框即可，不触碰内部值。
 SIZE_OPTIONS = [
     ("1080p", "opt.size.1080p"),
@@ -107,7 +112,7 @@ VAD_PARAMETERS = {
 }
 
 # 幻听后处理：仅对「时长 ≥ 阈值 且 文本命中模式」的片段生效，避免误删正常短句。
-# 模式表必须放词条文件：`mp3tom4/` 下的 Python 源码禁止出现中文字面量（有测试守卫）。
+# 模式表必须放词条文件：`clipscribe/` 下的 Python 源码禁止出现中文字面量（有测试守卫）。
 HALLUCINATION_MIN_DURATION_S = 3.0
 HALLUCINATION_PATTERN_KEY = "asr.hallucination_patterns"
 
@@ -211,10 +216,108 @@ GTCRN_URL = (
 )
 
 
+# ==================== 旧版配置目录迁移 ====================
+# 迁移结果标识：UI 层据此选择词条，翻译不落在本模块（禁止硬编码中文）
+MIGRATION_MIGRATED = "migrated"
+MIGRATION_SKIPPED = "skipped"
+MIGRATION_ABSENT = "absent"
+MIGRATION_FAILED = "failed"
+
+# 实际生效的目录名。迁移失败时降级为旧目录名，否则 `config_file()` /
+# `models_root()` 会指向一个空的新目录 —— 用户的配置丢失，1.55 GB 的
+# Whisper 权重还会被重新下载。
+_active_app_dir = APP_NAME
+# 最近一次迁移结果：(状态, 异常简述)，异常简述由 UI 层塞进词条占位符
+_last_migration = (MIGRATION_ABSENT, "")
+
+
+def _base_dir(root=None) -> Path:
+    """配置根目录：显式注入优先，其次 `%APPDATA%`，最后用户主目录。
+
+    注入 `root` 是为了让测试指向临时目录；模块内不直接硬编码读 `%APPDATA%`，
+    否则迁移逻辑无法在临时目录里被验证。
+    """
+    if root is not None:
+        return Path(root)
+    return Path(os.environ.get("APPDATA") or str(Path.home()))
+
+
+def config_root(root=None) -> Path:
+    """当前生效的配置根目录（`<base>/<目录名>`）。"""
+    return _base_dir(root) / _active_app_dir
+
+
+def legacy_config_root(root=None) -> Path:
+    """旧版（5.x 及更早）配置根目录。"""
+    return _base_dir(root) / LEGACY_APP_NAME
+
+
+def active_app_dir_name() -> str:
+    """当前生效的目录名（迁移失败时等于 `LEGACY_APP_NAME`）。"""
+    return _active_app_dir
+
+
+def last_migration():
+    """最近一次 `migrate_legacy_config_dir()` 的 ``(状态, 异常简述)``。"""
+    return _last_migration
+
+
+def migrate_legacy_config_dir(root=None) -> str:
+    """把 `%APPDATA%\\Mp3ToMp4` 一次性迁移为 `%APPDATA%\\ClipScribe`。
+
+    返回 `MIGRATION_*` 状态字符串，且**绝不抛异常**：
+
+    * 新目录已存在 → 什么都不做（幂等），返回 ``MIGRATION_SKIPPED``；
+    * 两个目录都不存在 → 什么都不做，返回 ``MIGRATION_ABSENT``；
+    * 旧目录存在 → 先 `os.replace()` 整体重命名（同盘瞬时完成、不复制），
+      失败再退回 `shutil.move()`；
+    * 两步都失败 → 放弃迁移并继续使用旧目录（``MIGRATION_FAILED``），
+      应用仍能正常启动，模型权重不会被重新下载。
+
+    失败时绝不删除旧目录；迁移成功后旧目录已经不存在（被重命名）。
+    """
+    global _active_app_dir, _last_migration
+
+    new_dir = _base_dir(root) / APP_NAME
+    old_dir = _base_dir(root) / LEGACY_APP_NAME
+
+    if new_dir.exists():
+        # 幂等：新目录已存在则既不覆盖也不合并，更不碰旧目录
+        _active_app_dir = APP_NAME
+        _last_migration = (MIGRATION_SKIPPED, "")
+        return MIGRATION_SKIPPED
+
+    if not old_dir.exists():
+        _active_app_dir = APP_NAME
+        _last_migration = (MIGRATION_ABSENT, "")
+        return MIGRATION_ABSENT
+
+    try:
+        os.replace(str(old_dir), str(new_dir))
+    except Exception as exc_replace:
+        try:
+            shutil.move(str(old_dir), str(new_dir))
+        except Exception as exc_move:
+            # shutil.move 是「复制 + 删除」，中途失败可能留下半成品新目录。
+            # 此时旧目录仍完整，清掉半成品，避免下次启动把半成品误判成
+            # 「已迁移」而让用户丢掉模型。
+            if old_dir.exists():
+                shutil.rmtree(str(new_dir), ignore_errors=True)
+            _active_app_dir = LEGACY_APP_NAME
+            detail = f"{exc_replace} / {exc_move}"
+            _last_migration = (MIGRATION_FAILED, detail)
+            logging.warning("ClipScribe: config dir migration failed: %s", detail)
+            return MIGRATION_FAILED
+
+    _active_app_dir = APP_NAME
+    _last_migration = (MIGRATION_MIGRATED, "")
+    logging.info("ClipScribe: config dir migrated %s -> %s", old_dir, new_dir)
+    return MIGRATION_MIGRATED
+
+
 # ==================== 配置持久化 ====================
 def config_file() -> Path:
-    base = os.environ.get("APPDATA") or str(Path.home())
-    return Path(base) / APP_NAME / "config.json"
+    return config_root() / "config.json"
 
 
 def load_config() -> dict:
@@ -252,8 +355,8 @@ def legacy_subtitle_flags(cfg: dict):
 
 # ==================== 路径 / 依赖 / 下载 ====================
 def models_root() -> Path:
-    base = os.environ.get("APPDATA") or str(Path.home())
-    return Path(base) / APP_NAME / "models"
+    """模型缓存根目录；迁移失败时仍在旧目录，避免重复下载权重。"""
+    return config_root() / "models"
 
 
 def module_available(name: str) -> bool:

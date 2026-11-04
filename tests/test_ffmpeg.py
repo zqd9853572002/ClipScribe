@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from mp3tom4 import ffmpeg as fm
+from clipscribe import ffmpeg as fm
 
 
 def test_ffmpeg_info_for_usable_binary(ffmpeg_path):

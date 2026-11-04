@@ -9,6 +9,7 @@ import traceback
 import tkinter as tk
 from tkinter import messagebox
 
+from .config import migrate_legacy_config_dir
 from .i18n import t
 from .ui.main_window import AudioToVideoApp
 
@@ -44,6 +45,14 @@ def _start() -> None:
 
 
 def main() -> None:
+    # 启动的第一步：在任何配置 / 模型路径被读取之前，把旧的
+    # %APPDATA%\Mp3ToMp4 迁到 %APPDATA%\ClipScribe。
+    # 函数内部已吞掉全部异常（失败时继续用旧目录），这里再兜一层，
+    # 保证迁移永远不可能阻止应用启动。
+    try:
+        migrate_legacy_config_dir()
+    except Exception:
+        pass
     _hide_console()
     try:
         _start()

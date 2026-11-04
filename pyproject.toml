@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 # 打包与工具链配置（setuptools 后端）
-# 版本号唯一来源：mp3tom4/config.py 的 APP_VERSION，此处保持同步。
+# 版本号唯一来源：clipscribe/config.py 的 APP_VERSION，此处保持同步。
 
 [build-system]
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mp3tom4"
-version = "5.3.0"
-description = "Turn audio into MP4 with a cover image — speech-to-text subtitles (SRT/TXT/VTT), burned-in hard subtitles and neural noise reduction, in a trilingual Windows desktop app."
+name = "clipscribe"
+version = "6.0.0"
+description = "ClipScribe: turn audio or video into subtitles (SRT/TXT/VTT) and cover-image MP4, with burned-in hard subtitles and neural noise reduction — a trilingual Windows desktop app."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
@@ -50,10 +50,10 @@ dev = [
 ]
 
 [project.scripts]
-mp3tom4 = "mp3tom4.app:main"
+clipscribe = "clipscribe.app:main"
 
 [project.gui-scripts]
-mp3tom4-gui = "mp3tom4.app:main"
+clipscribe-gui = "clipscribe.app:main"
 
 [project.urls]
 Homepage = "https://github.com/zqd9853572002/Mp3_to_Mp4"
@@ -61,12 +61,12 @@ Repository = "https://github.com/zqd9853572002/Mp3_to_Mp4"
 Issues = "https://github.com/zqd9853572002/Mp3_to_Mp4/issues"
 
 [tool.setuptools.packages.find]
-include = ["mp3tom4*"]
+include = ["clipscribe*"]
 exclude = ["tests*", "Archive*"]
 
 # 关键：locale/*.json 是界面词条，不声明则 pip 安装后界面全变 key
 [tool.setuptools.package-data]
-mp3tom4 = ["locale/*.json"]
+clipscribe = ["locale/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

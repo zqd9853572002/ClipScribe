@@ -3,7 +3,7 @@
   "lang.zh_TW": "繁體中文",
   "lang.en": "English",
 
-  "app.title": "極速音訊轉 MP4 批次引擎",
+  "app.title": "ClipScribe",
   "app.window_title": "{title} v{version}",
   "app.lang_label": "介面語言",
 
@@ -108,7 +108,7 @@
   "dlg.app_error_title": "程式異常",
   "dlg.startup_failed_title": "啟動失敗",
 
-  "log.welcome": ">>> 歡迎使用 {title} v{version}（FFmpeg 引擎 + 語音辨識）。\n",
+  "log.welcome": ">>> 歡迎使用 {title} v{version}（音訊／影片轉錄 · 字幕 · 配圖 MP4 · 降噪）。\n",
   "log.render_info": ">>> 渲染邏輯：1 幀/秒，影片極小，音訊保持原樣重新編碼為 AAC 192k。\n",
   "log.formats": ">>> 支援 {formats} 等格式。\n",
   "log.asr_ready": ">>> 🎧 語音辨識：faster-whisper 已就緒（首次使用會下載所選模型）。\n",
@@ -136,6 +136,10 @@
   "log.start": ">>> 🚀 開始處理，共 {count} 個檔案。\n\n",
   "log.cancel_request": ">>> 🛑 已要求取消，正在停止目前任務...\n",
   "log.config_fallback": ">>> ⚠ 設定項「{name}」的值「{raw}」無法辨識，已回退為 {value}。\n",
+  "log.config_migrated": ">>> 📦 已將舊版設定與模型目錄搬移到 {new}（原 {old}）。\n",
+  "log.config_migration_skipped": ">>> 📦 設定與模型目錄：{path}\n",
+  "log.config_migration_absent": ">>> 📦 未發現舊版設定目錄，使用 {path}。\n",
+  "log.config_migration_failed": ">>> ⚠ 設定目錄搬移失敗（{exc}），將繼續使用舊設定目錄：{path}\n",
   "log.prompt_truncated": ">>> ⚠ 術語 / 提示詞超過 {limit} 字元，超出部分已截斷。\n",
 
   "log.file_start": "[{index}/{total}] {name}\n",

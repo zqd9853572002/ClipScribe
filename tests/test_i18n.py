@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from mp3tom4 import i18n
+from clipscribe import i18n
 
 PACKAGE_ROOT = Path(i18n.__file__).resolve().parent
 LOCALE_DIR = PACKAGE_ROOT / "locale"
@@ -125,7 +125,7 @@ def test_first_launch_defaults_to_simplified_chinese(monkeypatch, tmp_path):
 # ==================== 持久化 ====================
 def test_language_choice_is_persisted_and_reloaded(monkeypatch, tmp_path):
     """切换后配置里写 ui_language；模拟重启（重新 import）仍是该语言。"""
-    from mp3tom4 import config
+    from clipscribe import config
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
     i18n.set_language("en")
@@ -143,7 +143,7 @@ def test_language_choice_is_persisted_and_reloaded(monkeypatch, tmp_path):
 
 
 def test_language_persist_does_not_clobber_other_settings(monkeypatch, tmp_path):
-    from mp3tom4 import config
+    from clipscribe import config
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
     config.save_config({"size_mode": "720p", "mux_original": True})
@@ -174,7 +174,7 @@ def _docstring_constant_ids(tree):
 
 
 def test_no_hardcoded_chinese_in_package():
-    """`mp3tom4/` 下除 docstring 外不得出现中文字符串字面量。
+    """`clipscribe/` 下除 docstring 外不得出现中文字符串字面量。
 
     这条用例是「没有只翻一半」的唯一可靠保证：新增遗漏文案会立刻失败。
     """
@@ -193,7 +193,7 @@ def test_no_hardcoded_chinese_in_package():
                 offenders.append(f"{rel}:{node.lineno}: {node.value[:48]!r}")
 
     assert not offenders, (
-        "发现硬编码中文字符串（应移入 mp3tom4/locale/*.json）：\n"
+        "发现硬编码中文字符串（应移入 clipscribe/locale/*.json）：\n"
         + "\n".join(offenders))
 
 

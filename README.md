@@ -1,23 +1,29 @@
-# Mp3 to MP4
+# ClipScribe
 
 **English** | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
-![CI](https://github.com/zqd9853572002/Mp3_to_Mp4/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/zqd9853572002/ClipScribe/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
-Mp3 to MP4 is a Windows desktop tool that pairs audio files with a still cover image and exports MP4 videos. It can also transcribe audio into SRT, VTT, and TXT subtitles and reduce background noise before recognition or export. Video files are accepted as well: MP4, WebM, MKV, MOV, and M4V can be used directly as a subtitle or denoise source, and only their first audio track is read.
+> **New here?** Start with the [Quick start](QUICKSTART.md) — from zero to your first subtitle in about five minutes.
+
+ClipScribe is a local, offline Windows desktop tool that turns audio and video into subtitles (SRT, VTT, TXT) and cover-image MP4 videos, with optional neural noise reduction and burned-in hard subtitles. Everything runs on your own machine; the only network access is the one-time model download.
 
 ![Application window](docs/screenshots/en.png)
 
+> The screenshots show version 5.x. In 6.0.0 the product was renamed to ClipScribe; the interface layout is unchanged and only the window title and welcome line differ.
+
 ## Contents
 
+- [What it does](#what-it-does)
 - [Execution model](#execution-model)
-- [Common combinations](#common-combinations)
+- [Common recipes](#common-recipes)
 - [Output files and naming](#output-files-and-naming)
 - [Subtitle formats](#subtitle-formats)
 - [Interface language](#interface-language)
+- [Upgrading from 5.x](#upgrading-from-5x)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Data and cache](#data-and-cache)
@@ -26,6 +32,19 @@ Mp3 to MP4 is a Windows desktop tool that pairs audio files with a still cover i
 - [Known limitations](#known-limitations)
 - [License](#license)
 - [Credits](#credits)
+
+## What it does
+
+| Area | Details |
+| --- | --- |
+| Audio input | 17 formats: MP3, M4A, M4B, AAC, WAV, FLAC, OGG, OGA, OPUS, WMA, AIFF, AIF, APE, WV, AMR, AC3, DTS |
+| Video input | 5 containers: MP4, WebM, MKV, MOV, M4V. Only the first audio track is extracted; the picture is not kept |
+| A · Noise reduction | FFmpeg RNNoise (`arnndn`, blend ratio configurable) or sherpa-onnx GTCRN. Falls back to FFmpeg spectral denoising (`afftdn`) when the RNNoise model is missing |
+| B · Speech recognition → subtitles | faster-whisper on CPU (int8); models tiny, base, small, medium, large-v3-turbo; languages auto / Chinese / English; SRT, VTT, and TXT output in any combination |
+| C · Cover-image MP4 | Still cover + audio track, 1 fps H.264 + AAC 192 kbps; optional loudness normalization (−16 LUFS, on by default); optional burned-in hard subtitles |
+| Extras | Glossary / prompt (`initial_prompt`, up to 800 characters), long-sentences-first VAD mode, hallucination suppression, three-language interface |
+
+The three groups are independent: run any one of them, any two, or all three in a single pass.
 
 ## Execution model
 
@@ -50,7 +69,7 @@ Select one or more audio or video files, configure the three option groups below
 - A cover image is required only for audio input with a cover MP4 option selected. Video input never needs a cover.
 - The denoised-video option requires noise reduction to be on; when noise reduction is Off, that option is ignored.
 - For video input, both cover MP4 options are skipped: they stay greyed out, they do not run even if they were checked earlier, and no cover image is requested. The app reports "Cover MP4 is skipped for this run (video input only provides its audio track)". Their checked state is kept and restored when you go back to an audio file.
-- Accepted audio formats are the ones FFmpeg can decode, including MP3, M4A, M4B, AAC, WAV, FLAC, OGG, OGA, OPUS, WMA, AIFF, APE, WV, AMR, AC3, and DTS.
+- Accepted audio formats are the ones FFmpeg can decode, including MP3, M4A, M4B, AAC, WAV, FLAC, OGG, OGA, OPUS, WMA, AIFF, AIF, APE, WV, AMR, AC3, and DTS.
 - Accepted video formats are MP4, WebM, MKV, MOV, and M4V. Only the first audio track is extracted (`-vn`, first audio stream) and converted to 16 kHz mono WAV before recognition, so a multi-track video cannot switch tracks.
 - A video with no audio track stops with a readable message ("The input has no usable audio track…") instead of raw FFmpeg stderr.
 - The glossary / prompt is handed to Whisper as `initial_prompt`. It mainly helps with names, company names, and domain jargon, and also steadies punctuation. Text longer than 800 characters is truncated, and the log says so.
@@ -59,11 +78,11 @@ Select one or more audio or video files, configure the three option groups below
 - Burn subtitles into the picture renders the SRT directly into the frames with FFmpeg's `subtitles` filter (libass), so the MP4 itself shows the text. It is off by default, and it is available only when all four conditions hold: at least one cover MP4 output is checked, at least one subtitle format is checked, the input is audio rather than video, and the current FFmpeg includes libass. Otherwise the checkbox is greyed out with the exact reason: "Video input produces no cover MP4, so hard subtitles do not apply", "No cover MP4 selected, so hard subtitles cannot be burned", "No subtitle format selected, so hard subtitles cannot be burned", or "This FFmpeg lacks libass, so hard subtitles cannot be burned". Sidecar subtitle files are still written, so burn-in and sidecar output never conflict.
 - Light noise reduction uses RNNoise. If the RNNoise model is unavailable (not downloaded, or the download failed), the chain falls back to `highpass=f=80,afftdn=nf=-25:tn=1`, FFmpeg's built-in spectral denoiser, which needs no download. The log says "falling back to spectral denoising (afftdn)", so a degraded run is visible instead of silently doing almost nothing.
 - `arnndn_mix` in `config.json` (default `0.8`, range 0.0–1.0) blends the denoised signal with the original: `1.0` is fully denoised, and lower values keep more of the original voice. There is no control for it in the window; edit the configuration file by hand.
-- Long silent stretches are less likely to produce hallucinated subtitle lines such as "thanks for watching", "subtitles by …", or "please like and subscribe": the recognition thresholds are stricter, and segments of 3 seconds or more whose text matches a known hallucination pattern are dropped, with the count written to the log. See [Known limitations](#known-limitations) for what this does not catch.
+- Long silent stretches are less likely to produce hallucinated subtitle lines such as "thanks for watching", "subtitles by …", or "please like and subscribe": the recognition thresholds are stricter (`no_speech_threshold` 0.5, `log_prob_threshold` −1.0), and segments of 3 seconds or more whose text matches a known hallucination pattern are dropped, with the count written to the log. See [Known limitations](#known-limitations) for what this does not catch.
 
 Defaults: 1080p, large-v3-turbo, auto-detect, light RNNoise, loudness normalization on, long sentences first off, and burn subtitles off.
 
-## Common combinations
+## Common recipes
 
 | Goal | What to select |
 | --- | --- |
@@ -123,6 +142,38 @@ Burn-in reuses the SRT file when SRT is checked. If only VTT and/or TXT is selec
 
 The interface ships in Simplified Chinese, Traditional Chinese, and English. Use the selector in the top-right corner; the change applies immediately and does not restart the app. The first launch starts in Simplified Chinese, and the selection is remembered. Log lines that have already been written keep the language they were printed in and are not retranslated.
 
+## Upgrading from 5.x
+
+Version 6.0.0 renames the project:
+
+| Item | 5.x | 6.0.0 |
+| --- | --- | --- |
+| Product name | MP3 to MP4 | **ClipScribe** |
+| Launcher script | `MP3toMP4.py` | `ClipScribe.py` |
+| Python package | `mp3tom4/` | `clipscribe/` |
+| Console commands | `mp3tom4`, `mp3tom4-gui` | `clipscribe`, `clipscribe-gui` |
+| Config and model folder | `%APPDATA%\Mp3ToMp4` | `%APPDATA%\ClipScribe` |
+
+**Your settings and downloaded models carry over automatically.** On first start, 6.0.0 renames `%APPDATA%\Mp3ToMp4` to `%APPDATA%\ClipScribe` as a whole directory. Nothing is copied, and already-downloaded models are not downloaded again.
+
+The migration has three levels of fallback and never crashes the app:
+
+1. A direct rename (`os.replace`) — instant on the same drive.
+2. If the rename fails, a move (`shutil.move`) — used when the two paths sit on different drives.
+3. If both fail, migration is abandoned: the app keeps using the old folder, logs a warning with the reason, and starts normally.
+
+Other rules:
+
+- If `%APPDATA%\ClipScribe` already exists, nothing is migrated, overwritten, or merged. The new folder wins, and the old folder is left untouched.
+- The old folder is only a migration source. In normal use it is never read or written again.
+- The startup log always prints one line about the config folder: migrated / using the new folder / no legacy folder found / migration failed and the old folder is still in use.
+
+**If you need to go back to 5.x.** The old version looks only at `%APPDATA%\Mp3ToMp4`, which no longer exists, so it creates an empty folder and downloads the recognition model again. To avoid re-downloading, copy `%APPDATA%\ClipScribe` back to `%APPDATA%\Mp3ToMp4` before running 5.x. Copying does not disturb the 6.0.0 folder, and 6.0.0 will not touch the restored old folder on the next start.
+
+**Command changes.** `python MP3toMP4.py` becomes `python ClipScribe.py`; the module form `python -m clipscribe` and the installed commands `clipscribe` / `clipscribe-gui` also work. Any script, shortcut, or scheduled task that referenced the old script name or the `mp3tom4` package must be updated.
+
+The GitHub repository is being renamed to `ClipScribe` at <https://github.com/zqd9853572002/ClipScribe>; old links redirect to the new address.
+
 ## Requirements
 
 - Windows 10 or 11
@@ -134,25 +185,27 @@ FFmpeg is not bundled with the application and must be installed separately.
 
 `libx264` and `aac` are required: a build that lacks either one is rejected. `libass` is optional: without it every other feature works normally, only burn-in is unavailable, and the startup log says "subtitle burn-in is unavailable, everything else works normally". To check your own build, run `ffmpeg -filters` and look for the `subtitles` filter (a line such as `.. subtitles  V->V  Render text...`).
 
+Disk space: leave room for the recognition model you plan to use (75 MB to 1.55 GB, see [Data and cache](#data-and-cache)) plus the output files.
+
 ## Installation
 
 ### Option 1: run from a clone
 
 ```bash
-git clone https://github.com/zqd9853572002/Mp3_to_Mp4.git
-cd Mp3_to_Mp4
+git clone https://github.com/zqd9853572002/ClipScribe.git
+cd ClipScribe
 pip install -r requirements.txt
-python MP3toMP4.py
+python ClipScribe.py
 ```
 
 ### Option 2: install as a package
 
 ```bash
 pip install .
-mp3tom4
+clipscribe
 ```
 
-`mp3tom4-gui` starts the same application.
+`clipscribe-gui` starts the same application. `python -m clipscribe` works from a checkout without installing.
 
 ### Option 3: install with optional features
 
@@ -174,8 +227,8 @@ The application searches, in order: the last path saved in the configuration, `f
 
 | Data | Location |
 | --- | --- |
-| Configuration | `%APPDATA%\Mp3ToMp4\config.json` |
-| Model cache | `%APPDATA%\Mp3ToMp4\models\` (with `whisper\` and `denoise\` subfolders) |
+| Configuration | `%APPDATA%\ClipScribe\config.json` |
+| Model cache | `%APPDATA%\ClipScribe\models\` (with `whisper\` and `denoise\` subfolders) |
 
 The configuration file stores the FFmpeg path, the last cover image, the output folder, the resolution, the interface language, and the recognition settings.
 
@@ -194,6 +247,8 @@ Settings added in 5.3.0:
 | --- | --- |
 | `burn_subtitles` | `false` (default) or `true`, the state of "Burn subtitles into the picture" |
 
+6.0.0 adds no new keys: the existing configuration is reused as-is after the folder migration.
+
 The first run with a given recognition model downloads its weights into `models\whisper\`:
 
 | Model | Download size |
@@ -209,8 +264,11 @@ The download requires a network connection and can take minutes to tens of minut
 ## Project structure
 
 ```text
-mp3tom4/
-├── config.py       constants, configuration, paths
+ClipScribe.py       launcher (python ClipScribe.py)
+clipscribe/
+├── __main__.py     python -m clipscribe
+├── app.py          startup: logging, folder migration, window
+├── config.py       constants, configuration, paths, migration
 ├── i18n.py         localization framework
 ├── ffmpeg.py       FFmpeg discovery, filters, muxing
 ├── denoise.py      noise reduction (RNNoise / GTCRN)
@@ -219,7 +277,8 @@ mp3tom4/
 ├── pipeline.py     job orchestration
 ├── ui/             interface
 └── locale/         translation catalogs
-tests/              pytest suite
+tests/              pytest suite (303 tests)
+docs/screenshots/   interface screenshots
 ```
 
 ## Development and testing
@@ -243,6 +302,8 @@ Tests that invoke a real FFmpeg binary are marked `integration` and can be skipp
 8. **Log history is not retranslated.** Switching the interface language leaves existing log lines in their original language.
 9. **Hallucination filtering is only partial.** It is based on text pattern matching and only drops segments of 3 seconds or more whose text matches a known pattern; a hallucination that does not match any pattern is kept. Word-level timestamps stay off, because faster-whisper's `hallucination_silence_threshold` requires them and enabling them would slow recognition noticeably.
 10. **Font size on original-size output uses a 1080-height baseline.** The burn-in style is computed from the output height, so a 4K source gets slightly smaller text and a tiny image gets slightly larger text. Both stay within the 16–48 range, so the text is never unreadable.
+
+ClipScribe does not translate, does not separate speakers, does not use the GPU, does not accept drag-and-drop, and does not include a subtitle editor. See [What it does](#what-it-does) for the complete feature list.
 
 ## License
 

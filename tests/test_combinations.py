@@ -16,8 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from mp3tom4 import pipeline as pipeline_mod
-from mp3tom4.pipeline import Pipeline, build_plan, option_flags
+from clipscribe import pipeline as pipeline_mod
+from clipscribe.pipeline import Pipeline, build_plan, option_flags
 
 # 组合定义：A = 降噪，B = 字幕（SRT），C = 原声配图 MP4
 COMBOS = {
@@ -326,7 +326,7 @@ def test_burn_param_sits_before_has_video():
 
 def test_burn_allowed_helper_is_shared_source_of_truth():
     """掩码单点定义：`burn_allowed()` 与 `option_flags()` 结果一致。"""
-    from mp3tom4.pipeline import burn_allowed
+    from clipscribe.pipeline import burn_allowed
 
     assert burn_allowed(True, True, True, False, False) is True
     assert burn_allowed(True, True, False, True, False) is True

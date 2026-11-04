@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from mp3tom4 import ffmpeg as ffmpeg_mod  # noqa: E402
+from clipscribe import ffmpeg as ffmpeg_mod  # noqa: E402
 
 
 def pytest_configure(config):
@@ -25,7 +25,7 @@ def isolated_i18n(monkeypatch, tmp_path):
     i18n 的语言是进程级全局状态，且初始语言会读取用户配置；不隔离会让
     用例之间互相影响，也会把测试写进真实的 %APPDATA% 目录。
     """
-    from mp3tom4 import i18n
+    from clipscribe import i18n
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
     i18n.set_language("zh_CN", persist=False)
@@ -90,7 +90,7 @@ def sine_video(ffmpeg_path, tmp_path):
 @pytest.fixture()
 def denoise_model(monkeypatch):
     """RNNoise 模型已存在则用真模型；不存在时屏蔽下载，避免测试联网。"""
-    from mp3tom4 import config, denoise
+    from clipscribe import config, denoise
 
     path = config.models_root() / "denoise" / "bd.rnnn"
     if path.is_file() and path.stat().st_size > 100_000:

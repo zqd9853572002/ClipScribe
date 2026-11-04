@@ -7,7 +7,7 @@ Design notes
   read once at import time; switching languages only swaps a pointer, it never
   touches the filesystem again.
 * The active language is resolved on first use (not at import) so that
-  ``mp3tom4.config`` may import this module at module scope without a circular
+  ``clipscribe.config`` may import this module at module scope without a circular
   import: reading the saved preference needs ``config.load_config`` which only
   exists once ``config`` finished executing.
 * ``t()`` never raises.  A missing key yields the key itself (plus a debug log

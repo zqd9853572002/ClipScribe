@@ -1,23 +1,29 @@
-# Mp3 to MP4
+# ClipScribe
 
 **English** | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
-![CI](https://github.com/zqd9853572002/Mp3_to_Mp4/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/zqd9853572002/ClipScribe/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
-Mp3 to MP4 是一個 Windows 桌面工具：把音訊檔案配上靜態封面圖片匯出 MP4 影片，也可以把音訊辨識成 SRT / VTT / TXT 字幕。辨識和匯出之前都可以先做降噪。影片檔案也能直接用：把 MP4、WebM、MKV、MOV、M4V 當作字幕或降噪的音源，程式只讀取其中的第一條音軌。
+> **第一次使用？** 先看[快速開始](QUICKSTART.zh-TW.md)：從零到產出第一條字幕，大約五分鐘。
+
+ClipScribe 是一個本機離線的 Windows 桌面工具：把音訊或影片轉錄成字幕（SRT、VTT、TXT），配上靜態封面圖片匯出 MP4 影片，並可選擇神經網路降噪和硬字幕燒錄。所有處理都在你自己的機器上完成，只有首次下載模型時需要連網。
 
 ![介面截圖](docs/screenshots/zh_TW.png)
 
+> 截圖來自 5.x 版本。6.0.0 已更名為 ClipScribe，介面版面不變，只有視窗標題和歡迎訊息不同。
+
 ## 目錄
 
+- [能做什麼](#能做什麼)
 - [執行模型](#執行模型)
 - [常見組合](#常見組合)
 - [產物與命名](#產物與命名)
 - [字幕格式](#字幕格式)
 - [介面語言](#介面語言)
+- [從舊版升級](#從舊版升級)
 - [系統需求](#系統需求)
 - [安裝](#安裝)
 - [資料與快取](#資料與快取)
@@ -26,6 +32,19 @@ Mp3 to MP4 是一個 Windows 桌面工具：把音訊檔案配上靜態封面圖
 - [已知限制](#已知限制)
 - [授權條款](#授權條款)
 - [致謝](#致謝)
+
+## 能做什麼
+
+| 範圍 | 說明 |
+| --- | --- |
+| 音訊輸入 | 17 種：MP3、M4A、M4B、AAC、WAV、FLAC、OGG、OGA、OPUS、WMA、AIFF、AIF、APE、WV、AMR、AC3、DTS |
+| 影片輸入 | 5 種容器：MP4、WebM、MKV、MOV、M4V。只擷取第一條音軌，畫面不保留 |
+| A · 降噪 | FFmpeg RNNoise（`arnndn`，混合比例可調）或 sherpa-onnx GTCRN；RNNoise 模型缺少時自動降級為 FFmpeg 頻譜降噪（`afftdn`） |
+| B · 語音辨識 → 字幕 | faster-whisper（CPU int8）；模型 tiny / base / small / medium / large-v3-turbo；語系自動偵測 / 中文 / 英文；SRT、VTT、TXT 可任意組合輸出 |
+| C · 配圖 MP4 | 靜態封面 + 音軌，1 幀/秒 H.264 + AAC 192 kbps；可選響度標準化（−16 LUFS，預設開啟）；可選硬字幕燒錄 |
+| 輔助能力 | 術語 / 提示詞（`initial_prompt`，上限 800 字元）、長句優先、幻聽抑制、三語介面 |
+
+三組功能互相獨立：單獨執行任一組、任兩組或三組一起執行都可以。
 
 ## 執行模型
 
@@ -50,7 +69,7 @@ Mp3 to MP4 是一個 Windows 桌面工具：把音訊檔案配上靜態封面圖
 - 只有「音訊輸入 + 勾選配圖 MP4」時才需要封面圖片；影片輸入永遠不需要封面。
 - 勾選「降噪音訊配圖 MP4」要求降噪不為「關閉」；降噪關閉時該項會被忽略。
 - 影片輸入時，兩個配圖 MP4 會被略過：選項維持變灰，即使之前勾著也不會執行，也不再要求封面圖片；介面會提示「配圖 MP4 本次略過（影片輸入只擷取音軌）」。勾選狀態會保留，切回音訊輸入時恢復。
-- 支援 FFmpeg 能解碼的音訊格式，包括 MP3、M4A、M4B、AAC、WAV、FLAC、OGG、OGA、OPUS、WMA、AIFF、APE、WV、AMR、AC3、DTS。
+- 支援 FFmpeg 能解碼的音訊格式，包括 MP3、M4A、M4B、AAC、WAV、FLAC、OGG、OGA、OPUS、WMA、AIFF、AIF、APE、WV、AMR、AC3、DTS。
 - 支援的影片格式為 MP4、WebM、MKV、MOV、M4V。程式用 `-vn` 和第一條音軌（`0:a:0?`）擷取音訊，轉成 16 kHz 單聲道 WAV 後走原有辨識流程；多音軌影片不提供選軌。
 - 影片沒有音軌時，程式會停下並給出可讀提示「輸入檔案裡沒有可用的音軌（影片可能無聲），無法擷取音訊」，不再把原始 ffmpeg stderr 丟給使用者。
 - 「術語 / 提示詞」會作為 `initial_prompt` 傳給 Whisper，主要改善人名、公司名和專業術語的辨識，標點也更穩定。超過 800 字元會自動截斷，並在日誌裡提示。
@@ -59,7 +78,7 @@ Mp3 to MP4 是一個 Windows 桌面工具：把音訊檔案配上靜態封面圖
 - 「字幕燒錄進畫面（硬字幕）」會用 FFmpeg 的 `subtitles` 濾鏡（依賴 libass）把 SRT 直接渲染進畫面，產出的 MP4 本身就帶字幕。預設不勾選，且必須同時滿足四個條件才可用：勾了至少一個配圖 MP4、勾了至少一種字幕格式、輸入不是影片、目前 FFmpeg 帶 libass。不滿足時核取方塊變灰並給出具體原因：「影片輸入不產出配圖 MP4，硬字幕不適用」「未勾選配圖 MP4，硬字幕無法燒錄」「未勾選任何字幕格式，硬字幕無法燒錄」「目前 FFmpeg 缺少 libass，無法燒錄硬字幕」。外掛字幕仍會照常輸出，硬字幕與外掛字幕不衝突。
 - 輕度降噪走 RNNoise。RNNoise 模型無法使用（沒下載或下載失敗）時，降噪鏈會降級為 `highpass=f=80,afftdn=nf=-25:tn=1`，即 FFmpeg 內建的頻譜降噪，無需下載；日誌會明確寫「已降級為頻譜降噪（afftdn）」，不會靜默失效。
 - `config.json` 裡的 `arnndn_mix`（預設 `0.8`，範圍 0.0–1.0）控制降噪輸出與原聲的混合比例：`1.0` 為完全降噪，數值越小保留越多原聲。介面上沒有入口，只能手動改設定檔。
-- 長靜音段更不容易冒出「謝謝觀看」「字幕由…提供」「請不吝點讚」這類幻聽字幕：辨識閾值收緊，同時時長 ≥ 3 秒且文字命中已知幻聽模式的片段會被丟棄，丟棄數量寫入日誌。漏掉哪些情況，見[已知限制](#已知限制)。
+- 長靜音段更不容易冒出「謝謝觀看」「字幕由…提供」「請不吝點讚」這類幻聽字幕：辨識閾值收緊（`no_speech_threshold` 0.5、`log_prob_threshold` −1.0），同時時長 ≥ 3 秒且文字命中已知幻聽模式的片段會被丟棄，丟棄數量寫入日誌。漏掉哪些情況，見[已知限制](#已知限制)。
 
 預設值：1080p、large-v3-turbo、自動偵測、輕度 RNNoise 降噪、響度標準化開啟、長句優先關閉、字幕燒錄關閉。
 
@@ -123,6 +142,38 @@ VTT 預設不勾選。它和 SRT / TXT 一樣隨辨識模型開關連動變灰�
 
 內建簡體中文、繁體中文、English。右上角可切換，切換後立即生效，不需要重新啟動程式。首次啟動預設簡體中文，之後會記住你的選擇。已經輸出的歷史日誌不會隨語言切換回譯。
 
+## 從舊版升級
+
+6.0.0 是一次改名版本：
+
+| 項目 | 5.x | 6.0.0 |
+| --- | --- | --- |
+| 產品名稱 | MP3 轉 MP4 | **ClipScribe** |
+| 啟動腳本 | `MP3toMP4.py` | `ClipScribe.py` |
+| Python 套件 | `mp3tom4/` | `clipscribe/` |
+| 指令 | `mp3tom4`、`mp3tom4-gui` | `clipscribe`、`clipscribe-gui` |
+| 設定與模型資料夾 | `%APPDATA%\Mp3ToMp4` | `%APPDATA%\ClipScribe` |
+
+**你的設定和下載好的模型會自動帶過來。** 6.0.0 首次啟動時，會把 `%APPDATA%\Mp3ToMp4` 整個資料夾重新命名為 `%APPDATA%\ClipScribe`。這不是複製，已經下載好的模型不會重新下載。
+
+搬移有三層降級，任何一步失敗都不會讓程式崩潰：
+
+1. 直接用 `os.replace` 重新命名——同磁碟時瞬間完成。
+2. 重新命名失敗時退回 `shutil.move` 搬移——用於新舊路徑跨磁碟的情況。
+3. 兩步都失敗就放棄搬移：繼續使用舊資料夾，日誌寫出失敗原因，程式照常啟動。
+
+其他規則：
+
+- 如果 `%APPDATA%\ClipScribe` 已經存在，則不搬移、不覆寫、不合併，以新資料夾為準，舊資料夾一律不動。
+- 舊資料夾只作為搬移來源，正常使用中不會再被讀寫。
+- 啟動日誌一定會輸出一行設定資料夾狀態：已搬移 / 使用新資料夾 / 未發現舊資料夾 / 搬移失敗繼續用舊資料夾。
+
+**如果需要退回 5.x。** 舊版只認 `%APPDATA%\Mp3ToMp4`，這個資料夾已經不在了，所以它會新建一個空資料夾並重新下載辨識模型。想避免重新下載，就在執行 5.x 之前把 `%APPDATA%\ClipScribe` 複製回 `%APPDATA%\Mp3ToMp4`。複製不會影響 6.0.0 的資料夾，6.0.0 下次啟動也不會去動這個還原出來的舊資料夾。
+
+**指令變化。** `python MP3toMP4.py` 改為 `python ClipScribe.py`；也支援模組方式 `python -m clipscribe`，以及安裝後的 `clipscribe` / `clipscribe-gui`。任何引用了舊腳本名稱或 `mp3tom4` 套件的腳本、捷徑和排程工作都需要同步修改。
+
+GitHub 儲存庫正在改名為 `ClipScribe`，新位址是 <https://github.com/zqd9853572002/ClipScribe>，舊連結會跳轉到新位址。
+
 ## 系統需求
 
 - Windows 10 / 11
@@ -134,25 +185,27 @@ VTT 預設不勾選。它和 SRT / TXT 一樣隨辨識模型開關連動變灰�
 
 `libx264` 和 `aac` 是必需能力，缺任一個的版本會被拒絕。`libass` 是選用能力：缺少時其餘功能全部正常，只是不能燒錄硬字幕，啟動日誌會提示「字幕燒錄不可用，其餘功能正常」。想確認自己的 FFmpeg 是否帶 libass，執行 `ffmpeg -filters`，看列表裡有沒有 `subtitles` 濾鏡（形如 `.. subtitles  V->V  Render text...`）。
 
+磁碟空間：留出你要用的辨識模型大小（75 MB 到 1.55 GB，見[資料與快取](#資料與快取)），再加上產物檔案的空間。
+
 ## 安裝
 
 ### 方式一：取得專案後直接執行
 
 ```bash
-git clone https://github.com/zqd9853572002/Mp3_to_Mp4.git
-cd Mp3_to_Mp4
+git clone https://github.com/zqd9853572002/ClipScribe.git
+cd ClipScribe
 pip install -r requirements.txt
-python MP3toMP4.py
+python ClipScribe.py
 ```
 
 ### 方式二：安裝成 Python 套件
 
 ```bash
 pip install .
-mp3tom4
+clipscribe
 ```
 
-`mp3tom4-gui` 啟動的是同一個程式。
+`clipscribe-gui` 啟動的是同一個程式。不安裝時也可以用 `python -m clipscribe` 直接從原始碼執行。
 
 ### 方式三：安裝完整功能
 
@@ -174,8 +227,8 @@ winget install Gyan.FFmpeg
 
 | 資料 | 位置 |
 | --- | --- |
-| 設定檔 | `%APPDATA%\Mp3ToMp4\config.json` |
-| 模型快取 | `%APPDATA%\Mp3ToMp4\models\`（內含 `whisper\` 與 `denoise\`） |
+| 設定檔 | `%APPDATA%\ClipScribe\config.json` |
+| 模型快取 | `%APPDATA%\ClipScribe\models\`（內含 `whisper\` 與 `denoise\`） |
 
 設定檔會保存 FFmpeg 路徑、上次使用的封面、輸出資料夾、輸出尺寸、介面語言和辨識相關設定。
 
@@ -194,6 +247,8 @@ winget install Gyan.FFmpeg
 | --- | --- |
 | `burn_subtitles` | `false`（預設）或 `true`，對應「字幕燒錄進畫面（硬字幕）」的勾選狀態 |
 
+6.0.0 沒有新增設定鍵：資料夾搬移完成後，原有設定原樣繼續使用。
+
 首次使用某個辨識模型時，程式會自動下載權重到 `models\whisper\`：
 
 | 模型 | 下載大小 |
@@ -204,22 +259,26 @@ winget install Gyan.FFmpeg
 | base | 141 MB |
 | tiny | 75 MB |
 
-下載需要連網，耗時可能從幾分鐘到幾十分鐘。程式會在開始前寫入日誌，所以首次執行看起來沒反應時，通常是在下載。模型會保留在磁碟上，整個目錄可以安全刪除。兩個小體積降噪模型會在首次使用時下載到 `models\denoise\`。
+下載需要連網，耗時可能從幾分鐘到幾十分鐘。程式會在開始前寫入日誌，所以首次執行看起來沒反應時，通常是在下載。模型會保留在磁碟上，整個資料夾可以安全刪除。兩個小體積降噪模型會在首次使用時下載到 `models\denoise\`。
 
 ## 專案結構
 
 ```text
-mp3tom4/
-├── config.py      常數、設定讀寫、路徑
-├── i18n.py        多語言框架
-├── ffmpeg.py      FFmpeg 偵測、濾鏡、封裝
-├── denoise.py     降噪（RNNoise / GTCRN）
-├── asr.py         語音辨識（faster-whisper）
-├── subtitle.py    SRT / VTT / TXT 產生
-├── pipeline.py    任務編排
-├── ui/            介面
-└── locale/        三語詞條
-tests/             pytest 測試套件
+ClipScribe.py       啟動入口（python ClipScribe.py）
+clipscribe/
+├── __main__.py     python -m clipscribe
+├── app.py          啟動流程：日誌、資料夾搬移、主視窗
+├── config.py       常數、設定讀寫、路徑、搬移
+├── i18n.py         多語言框架
+├── ffmpeg.py       FFmpeg 偵測、濾鏡、封裝
+├── denoise.py      降噪（RNNoise / GTCRN）
+├── asr.py          語音辨識（faster-whisper）
+├── subtitle.py     SRT / VTT / TXT 產生
+├── pipeline.py     任務編排
+├── ui/             介面
+└── locale/         三語詞條
+tests/              pytest 測試套件（303 項）
+docs/screenshots/   介面截圖
 ```
 
 ## 開發與測試
@@ -243,6 +302,8 @@ pytest tests/ -v
 8. **歷史日誌不回譯。** 切換介面語言後，已經輸出的日誌維持原語言。
 9. **幻聽過濾只涵蓋一部分情況。** 過濾基於文字模式比對，只處理「時長 ≥ 3 秒且命中已知模式」的片段，沒命中模式的幻覺不會被刪除。詞級時間戳記（`word_timestamps`）維持關閉，因為 faster-whisper 的 `hallucination_silence_threshold` 依賴它，開啟會明顯變慢。
 10. **原圖尺寸輸出的字級按 1080 高度基準計算。** 燒錄樣式按輸出高度推導，所以 4K 來源的字級會略小、極小圖的字級會略大；兩者都被夾在 16–48 之間，不會小到不可讀。
+
+ClipScribe 不做互譯、不做說話者分離、不用 GPU 加速、不支援拖曳檔案，也沒有字幕編輯器。完整能力見[能做什麼](#能做什麼)。
 
 ## 授權條款
 
